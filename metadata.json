@@ -1,0 +1,6 @@
+{
+  "name": "Saku",
+  "description": "Aplikasi pencatatan keuangan pribadi offline-first dengan desain elegan bernuansa hijau tua dan krem, dilengkapi manajemen kantong, transaksi, laporan, dan ekspor data.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
