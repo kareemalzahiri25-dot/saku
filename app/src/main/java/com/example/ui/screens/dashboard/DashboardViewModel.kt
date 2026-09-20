@@ -2,6 +2,7 @@ package com.example.ui.screens.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.domain.model.Asset
 import com.example.domain.model.FinancialSummary
 import com.example.domain.model.Pocket
 import com.example.domain.model.Transaction
@@ -16,7 +17,8 @@ import kotlinx.coroutines.launch
 
 data class DashboardUiState(
     val user: User? = null,
-    val summary: FinancialSummary = FinancialSummary(0.0, 0.0, 0.0, 0.0, 0),
+    val summary: FinancialSummary = FinancialSummary(),
+    val assets: List<Asset> = emptyList(),
     val pockets: List<Pocket> = emptyList(),
     val recentTransactions: List<Transaction> = emptyList(),
     val isBalanceVisible: Boolean = true,
@@ -37,8 +39,11 @@ class DashboardViewModel(
         .stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5000),
-            FinancialSummary(0.0, 0.0, 0.0, 0.0, 0)
+            FinancialSummary()
         )
+
+    val assets: StateFlow<List<Asset>> = repository.getAllAssets()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val pockets: StateFlow<List<Pocket>> = repository.getAllPockets()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

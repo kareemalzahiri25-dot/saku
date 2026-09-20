@@ -44,10 +44,12 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CurrencyExchange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FlightTakeoff
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Savings
@@ -69,6 +71,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -617,14 +620,16 @@ fun KantongScreen(
                         PocketCompactGridCard(
                             pocket = rowPockets[0],
                             modifier = Modifier.weight(1f),
-                            onTransfer = { viewModel.openTransferDialog(rowPockets[0].id) }
+                            onTransfer = { viewModel.openTransferDialog(rowPockets[0].id) },
+                            onEdit = { viewModel.openEditPocketDialog(rowPockets[0]) }
                         )
 
                         if (rowPockets.size > 1) {
                             PocketCompactGridCard(
                                 pocket = rowPockets[1],
                                 modifier = Modifier.weight(1f),
-                                onTransfer = { viewModel.openTransferDialog(rowPockets[1].id) }
+                                onTransfer = { viewModel.openTransferDialog(rowPockets[1].id) },
+                                onEdit = { viewModel.openEditPocketDialog(rowPockets[1]) }
                             )
                         } else {
                             Spacer(modifier = Modifier.weight(1f))
@@ -637,6 +642,7 @@ fun KantongScreen(
                     PocketDetailedCard(
                         pocket = pocket,
                         onTransfer = { viewModel.openTransferDialog(pocket.id) },
+                        onEdit = { viewModel.openEditPocketDialog(pocket) },
                         onDelete = { viewModel.deletePocket(pocket.id) }
                     )
                 }
@@ -656,6 +662,21 @@ fun KantongScreen(
                 onIconChange = { viewModel.onNewPocketIconChange(it) },
                 onDescriptionChange = { viewModel.onNewPocketDescriptionChange(it) },
                 onSave = { viewModel.saveNewPocket() }
+            )
+        }
+
+        // Modal / Dialog: Edit Kantong (Figma Fidelity)
+        if (uiState.isEditPocketDialogOpen) {
+            EditKantongModal(
+                uiState = uiState,
+                onDismiss = { viewModel.closeEditPocketDialog() },
+                onNameChange = { viewModel.onEditPocketNameChange(it) },
+                onTypeChange = { viewModel.onEditPocketTypeChange(it) },
+                onTargetChange = { viewModel.onEditPocketTargetChange(it) },
+                onColorChange = { viewModel.onEditPocketColorChange(it) },
+                onIconChange = { viewModel.onEditPocketIconChange(it) },
+                onDescriptionChange = { viewModel.onEditPocketDescriptionChange(it) },
+                onSave = { viewModel.saveEditPocket() }
             )
         }
 
@@ -680,7 +701,8 @@ fun KantongScreen(
 fun PocketCompactGridCard(
     pocket: Pocket,
     modifier: Modifier = Modifier,
-    onTransfer: () -> Unit
+    onTransfer: () -> Unit,
+    onEdit: () -> Unit
 ) {
     val pocketColor = parsePocketColor(pocket.colorHex)
     val iconVector = getPocketIconVector(pocket.iconName)
@@ -701,7 +723,7 @@ fun PocketCompactGridCard(
                 .fillMaxWidth()
                 .padding(14.dp)
         ) {
-            // Top Row: Category-specific icon in small colored rounded-square + optional badge
+            // Top Row: Category-specific icon in small colored rounded-square + optional badge + Edit action
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -723,34 +745,52 @@ fun PocketCompactGridCard(
                     )
                 }
 
-                if (pocket.isMain) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = SakuGoldLight
-                    ) {
-                        Text(
-                            text = "Utama",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = SakuGoldAccent,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 9.sp
-                            ),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (pocket.isMain) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = SakuGoldLight
+                        ) {
+                            Text(
+                                text = "Utama",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = SakuGoldAccent,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 9.sp
+                                ),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    } else if (pocket.targetAmount > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = SakuLightGreen
+                        ) {
+                            Text(
+                                text = "$progressPercentage%",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = SakuDarkGreen,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 10.sp
+                                ),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
-                } else if (pocket.targetAmount > 0) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = SakuLightGreen
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    IconButton(
+                        onClick = onEdit,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .testTag("edit_pocket_btn_${pocket.id}")
                     ) {
-                        Text(
-                            text = "$progressPercentage%",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = SakuDarkGreen,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 10.sp
-                            ),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit Kantong",
+                            tint = SakuTextMuted,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
@@ -839,6 +879,7 @@ fun PocketCompactGridCard(
 fun PocketDetailedCard(
     pocket: Pocket,
     onTransfer: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     val pocketColor = parsePocketColor(pocket.colorHex)
@@ -917,14 +958,30 @@ fun PocketDetailedCard(
                     }
                 }
 
-                if (!pocket.isMain) {
-                    IconButton(onClick = onDelete) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onEdit,
+                        modifier = Modifier.testTag("edit_pocket_btn_${pocket.id}")
+                    ) {
                         Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Hapus Kantong",
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit Kantong",
                             tint = SakuTextMuted,
                             modifier = Modifier.size(20.dp)
                         )
+                    }
+                    if (!pocket.isMain) {
+                        IconButton(
+                            onClick = onDelete,
+                            modifier = Modifier.testTag("delete_pocket_btn_${pocket.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Hapus Kantong",
+                                tint = SakuTextMuted,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -1429,6 +1486,462 @@ fun BuatKantongModal(
                                 color = Color.White
                             )
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Edit Kantong Modal / Dialog (Matching Buat Kantong Baru Design)
+@Composable
+fun EditKantongModal(
+    uiState: KantongUiState,
+    onDismiss: () -> Unit,
+    onNameChange: (String) -> Unit,
+    onTypeChange: (String) -> Unit,
+    onTargetChange: (String) -> Unit,
+    onColorChange: (String) -> Unit,
+    onIconChange: (String) -> Unit,
+    onDescriptionChange: (String) -> Unit,
+    onSave: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .windowInsetsPadding(WindowInsets.statusBars),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Card(
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                colors = CardDefaults.cardColors(containerColor = SakuCreamBackground),
+                border = BorderStroke(1.dp, SakuCreamBorder),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.92f)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 20.dp, vertical = 18.dp)
+                ) {
+                    // Header with Back / Close Button, Title, and Subtitle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .testTag("close_edit_pocket_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Kembali",
+                                tint = SakuDarkGreen
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Column {
+                            Text(
+                                text = "Edit Kantong",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = SakuDarkGreen
+                                )
+                            )
+                            Text(
+                                text = "Ubah informasi dan target anggaran kantong",
+                                style = MaterialTheme.typography.bodySmall.copy(color = SakuTextSecondary)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Scrollable Form Body
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // 1. Nama Kantong
+                        Column {
+                            Text(
+                                text = "Nama Kantong",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = SakuDarkGreen
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedTextField(
+                                value = uiState.editPocketName,
+                                onValueChange = onNameChange,
+                                placeholder = { Text("Nama kantong") },
+                                shape = RoundedCornerShape(14.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = SakuCreamSurface,
+                                    unfocusedContainerColor = SakuCreamSurface,
+                                    focusedBorderColor = SakuDarkGreen,
+                                    unfocusedBorderColor = SakuCreamBorder
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("edit_pocket_name_input")
+                            )
+                        }
+
+                        // 2. Jenis Kantong (Selectable Chips with Icons)
+                        Column {
+                            Text(
+                                text = "Jenis Kantong",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = SakuDarkGreen
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                POCKET_TYPES.forEach { opt ->
+                                    val isSelected = uiState.editPocketType == opt.id
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isSelected) SakuDarkGreen else SakuCreamSurface,
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isSelected) SakuDarkGreen else SakuCreamBorder
+                                        ),
+                                        shadowElevation = if (isSelected) 2.dp else 0.dp,
+                                        modifier = Modifier.clickable {
+                                            onTypeChange(opt.id)
+                                            onIconChange(opt.defaultIconName)
+                                        }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = opt.icon,
+                                                contentDescription = opt.label,
+                                                tint = if (isSelected) Color.White else SakuDarkGreen,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = opt.label,
+                                                style = MaterialTheme.typography.labelMedium.copy(
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (isSelected) Color.White else SakuTextPrimary
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 3. Saldo Saat Ini (Read-only / Non-editable)
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Saldo Saat Ini",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = SakuDarkGreen
+                                    )
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = SakuLightGreen
+                                ) {
+                                    Text(
+                                        text = "Hanya Lihat",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = SakuDarkGreen,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 9.5.sp
+                                        ),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = SakuCreamSurfaceVariant,
+                                border = BorderStroke(1.dp, SakuCreamBorder),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = Formatters.formatRupiah(uiState.editingPocketCurrentBalance),
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = SakuDarkGreen
+                                        )
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = "Saldo terkunci",
+                                        tint = SakuTextMuted,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Saldo dihitung otomatis dari riwayat transaksi dan perpindahan dana.",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = SakuTextSecondary,
+                                    fontSize = 11.5.sp
+                                )
+                            )
+                        }
+
+                        // 4. Target Saldo & Helper Text
+                        Column {
+                            Text(
+                                text = "Target Saldo",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = SakuDarkGreen
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedTextField(
+                                value = uiState.editPocketTarget,
+                                onValueChange = onTargetChange,
+                                placeholder = { Text("0 (Kosongkan jika tanpa target)") },
+                                prefix = {
+                                    Text(
+                                        text = "Rp ",
+                                        fontWeight = FontWeight.Bold,
+                                        color = SakuDarkGreen
+                                    )
+                                },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = SakuCreamSurface,
+                                    unfocusedContainerColor = SakuCreamSurface,
+                                    focusedBorderColor = SakuDarkGreen,
+                                    unfocusedBorderColor = SakuCreamBorder
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("edit_pocket_target_input")
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Tentukan target untuk memantau progres tabunganmu",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = SakuTextSecondary,
+                                    fontSize = 11.5.sp
+                                )
+                            )
+                        }
+
+                        // 5. Warna Kantong (Circular Color Choices)
+                        Column {
+                            Text(
+                                text = "Warna Kantong",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = SakuDarkGreen
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                POCKET_COLORS.forEach { colorOpt ->
+                                    val isSelected = uiState.editPocketColorHex.equals(colorOpt.hex, ignoreCase = true)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(CircleShape)
+                                            .background(colorOpt.color)
+                                            .border(
+                                                width = if (isSelected) 3.dp else 1.dp,
+                                                color = if (isSelected) SakuDarkGreen else Color.Transparent,
+                                                shape = CircleShape
+                                            )
+                                            .clickable { onColorChange(colorOpt.hex) },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Terpilih",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 6. Pilih Icon (Selectable Icon Buttons)
+                        Column {
+                            Text(
+                                text = "Pilih Icon",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = SakuDarkGreen
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                POCKET_ICONS.forEach { iconOpt ->
+                                    val isSelected = uiState.editPocketIcon == iconOpt.id
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isSelected) SakuLightGreen else SakuCreamSurface,
+                                        border = BorderStroke(
+                                            1.5.dp,
+                                            if (isSelected) SakuDarkGreen else SakuCreamBorder
+                                        ),
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clickable { onIconChange(iconOpt.id) }
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = iconOpt.icon,
+                                                contentDescription = iconOpt.label,
+                                                tint = if (isSelected) SakuDarkGreen else SakuTextSecondary,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 7. Catatan / Deskripsi (Opsional)
+                        Column {
+                            Text(
+                                text = "Catatan Tambahan (Opsional)",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = SakuDarkGreen
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedTextField(
+                                value = uiState.editPocketDescription,
+                                onValueChange = onDescriptionChange,
+                                placeholder = { Text("Tuliskan tujuan atau detail anggaran...") },
+                                shape = RoundedCornerShape(14.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = SakuCreamSurface,
+                                    unfocusedContainerColor = SakuCreamSurface,
+                                    focusedBorderColor = SakuDarkGreen,
+                                    unfocusedBorderColor = SakuCreamBorder
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        // Error Banner
+                        if (uiState.errorMessage != null) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = SakuExpenseRed.copy(alpha = 0.1f),
+                                border = BorderStroke(1.dp, SakuExpenseRed.copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = uiState.errorMessage ?: "",
+                                    color = SakuExpenseRed,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                    modifier = Modifier.padding(12.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Bottom Action Buttons: Batal and Simpan Perubahan
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp)
+                                .testTag("cancel_edit_pocket_button"),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.5.dp, SakuCreamBorder),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = SakuTextSecondary
+                            )
+                        ) {
+                            Text(
+                                text = "Batal",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = SakuTextSecondary
+                                )
+                            )
+                        }
+
+                        Button(
+                            onClick = onSave,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = SakuDarkGreen,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp)
+                                .testTag("save_edit_pocket_button")
+                        ) {
+                            Text(
+                                text = "Simpan Perubahan",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            )
+                        }
                     }
                 }
             }

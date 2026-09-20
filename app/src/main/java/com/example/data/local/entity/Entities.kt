@@ -2,44 +2,77 @@ package com.example.data.local.entity
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.example.domain.model.Asset
+import com.example.domain.model.AssetType
 import com.example.domain.model.Category
 import com.example.domain.model.Pocket
 import com.example.domain.model.Transaction
 import com.example.domain.model.TransactionType
 import com.example.domain.model.User
 
+@Entity(tableName = "assets")
+data class AssetEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val typeString: String,
+    val balance: Double,
+    val currency: String = "IDR",
+    val isActive: Boolean = true
+) {
+    fun toDomain(): Asset = Asset(
+        id = id,
+        name = name,
+        type = try { AssetType.valueOf(typeString) } catch (e: Exception) { AssetType.BANK },
+        balance = balance,
+        currency = currency,
+        isActive = isActive
+    )
+
+    companion object {
+        fun fromDomain(asset: Asset): AssetEntity = AssetEntity(
+            id = asset.id,
+            name = asset.name,
+            typeString = asset.type.name,
+            balance = asset.balance,
+            currency = asset.currency,
+            isActive = asset.isActive
+        )
+    }
+}
+
 @Entity(tableName = "pockets")
 data class PocketEntity(
     @PrimaryKey val id: String,
     val name: String,
-    val balance: Double,
+    val assetId: String,
+    val allocatedAmount: Double,
     val targetAmount: Double,
-    val iconName: String,
-    val colorHex: String,
-    val isMain: Boolean,
-    val description: String
+    val color: String,
+    val icon: String,
+    val isActive: Boolean = true
 ) {
-    fun toDomain(): Pocket = Pocket(
+    fun toDomain(assetName: String = ""): Pocket = Pocket(
         id = id,
         name = name,
-        balance = balance,
+        assetId = assetId,
+        allocatedAmount = allocatedAmount,
         targetAmount = targetAmount,
-        iconName = iconName,
-        colorHex = colorHex,
-        isMain = isMain,
-        description = description
+        color = color,
+        icon = icon,
+        isActive = isActive,
+        assetName = assetName
     )
 
     companion object {
         fun fromDomain(pocket: Pocket): PocketEntity = PocketEntity(
             id = pocket.id,
             name = pocket.name,
-            balance = pocket.balance,
+            assetId = pocket.assetId,
+            allocatedAmount = pocket.allocatedAmount,
             targetAmount = pocket.targetAmount,
-            iconName = pocket.iconName,
-            colorHex = pocket.colorHex,
-            isMain = pocket.isMain,
-            description = pocket.description
+            color = pocket.color,
+            icon = pocket.icon,
+            isActive = pocket.isActive
         )
     }
 }
@@ -80,10 +113,12 @@ data class TransactionEntity(
     val categoryId: String,
     val categoryName: String,
     val categoryIcon: String,
-    val pocketId: String,
-    val pocketName: String,
-    val targetPocketId: String?,
-    val targetPocketName: String?,
+    val assetId: String,
+    val assetName: String,
+    val pocketId: String?,
+    val pocketName: String?,
+    val targetAssetId: String?,
+    val targetAssetName: String?,
     val dateMillis: Long,
     val note: String,
     val receiptImageUrl: String?
@@ -96,10 +131,12 @@ data class TransactionEntity(
         categoryId = categoryId,
         categoryName = categoryName,
         categoryIcon = categoryIcon,
+        assetId = assetId,
+        assetName = assetName,
         pocketId = pocketId,
         pocketName = pocketName,
-        targetPocketId = targetPocketId,
-        targetPocketName = targetPocketName,
+        targetAssetId = targetAssetId,
+        targetAssetName = targetAssetName,
         dateMillis = dateMillis,
         note = note,
         receiptImageUrl = receiptImageUrl
@@ -114,10 +151,12 @@ data class TransactionEntity(
             categoryId = t.categoryId,
             categoryName = t.categoryName,
             categoryIcon = t.categoryIcon,
+            assetId = t.assetId,
+            assetName = t.assetName,
             pocketId = t.pocketId,
             pocketName = t.pocketName,
-            targetPocketId = t.targetPocketId,
-            targetPocketName = t.targetPocketName,
+            targetAssetId = t.targetAssetId,
+            targetAssetName = t.targetAssetName,
             dateMillis = t.dateMillis,
             note = t.note,
             receiptImageUrl = t.receiptImageUrl

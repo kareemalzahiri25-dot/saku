@@ -139,7 +139,10 @@ fun SakuNavHost(
                 }
                 AddTransactionScreen(
                     viewModel = txVm,
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToProfile = {
+                        navController.navigate(Screen.Profil.route)
+                    }
                 )
             }
 

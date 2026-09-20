@@ -7,6 +7,7 @@ import com.example.domain.model.Pocket
 import com.example.domain.model.Transaction
 import com.example.domain.model.TransactionType
 import com.example.domain.repository.SakuRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +23,16 @@ enum class KantongViewMode {
 data class KantongUiState(
     val isAddPocketDialogOpen: Boolean = false,
     val isTransferDialogOpen: Boolean = false,
+    val isEditPocketDialogOpen: Boolean = false,
+    val editingPocketId: String? = null,
+    val editingPocketCurrentBalance: Double = 0.0,
+    val editingPocketIsMain: Boolean = false,
+    val editPocketName: String = "",
+    val editPocketTarget: String = "",
+    val editPocketDescription: String = "",
+    val editPocketType: String = "Tabungan",
+    val editPocketColorHex: String = "#133E35",
+    val editPocketIcon: String = "savings",
     val newPocketName: String = "",
     val newPocketBalance: String = "",
     val newPocketTarget: String = "",
@@ -216,6 +227,120 @@ class KantongViewModel(
             repository.insertTransaction(transferTx)
             closeTransferDialog()
         }
+    }
+
+    fun openEditPocketDialog(pocket: Pocket) {
+        val (type, note) = extractTypeAndNote(pocket.description)
+        _uiState.value = _uiState.value.copy(
+            isEditPocketDialogOpen = true,
+            editingPocketId = pocket.id,
+            editingPocketCurrentBalance = pocket.balance,
+            editingPocketIsMain = pocket.isMain,
+            editPocketName = pocket.name,
+            editPocketTarget = if (pocket.targetAmount > 0) pocket.targetAmount.toLong().toString() else "",
+            editPocketDescription = note,
+            editPocketType = type,
+            editPocketColorHex = pocket.colorHex,
+            editPocketIcon = pocket.iconName,
+            errorMessage = null
+        )
+    }
+
+    fun closeEditPocketDialog() {
+        _uiState.value = _uiState.value.copy(
+            isEditPocketDialogOpen = false,
+            editingPocketId = null,
+            errorMessage = null
+        )
+    }
+
+    fun onEditPocketNameChange(name: String) {
+        _uiState.value = _uiState.value.copy(editPocketName = name, errorMessage = null)
+    }
+
+    fun onEditPocketTargetChange(target: String) {
+        _uiState.value = _uiState.value.copy(editPocketTarget = target, errorMessage = null)
+    }
+
+    fun onEditPocketDescriptionChange(desc: String) {
+        _uiState.value = _uiState.value.copy(editPocketDescription = desc)
+    }
+
+    fun onEditPocketTypeChange(type: String) {
+        _uiState.value = _uiState.value.copy(editPocketType = type)
+    }
+
+    fun onEditPocketColorChange(colorHex: String) {
+        _uiState.value = _uiState.value.copy(editPocketColorHex = colorHex)
+    }
+
+    fun onEditPocketIconChange(iconName: String) {
+        _uiState.value = _uiState.value.copy(editPocketIcon = iconName)
+    }
+
+    fun saveEditPocket(): Job? {
+        val state = _uiState.value
+        val pocketId = state.editingPocketId ?: return null
+
+        if (state.editPocketName.isBlank()) {
+            _uiState.value = state.copy(errorMessage = "Nama kantong wajib diisi")
+            return null
+        }
+
+        val trimmedTarget = state.editPocketTarget.trim()
+        if (trimmedTarget.isNotBlank()) {
+            val hasInvalidChars = trimmedTarget.any { !it.isDigit() && it != '.' && it != ',' && it != ' ' }
+            if (hasInvalidChars) {
+                _uiState.value = state.copy(errorMessage = "Target saldo tidak valid")
+                return null
+            }
+        }
+        val target = Formatters.parseAmount(trimmedTarget)
+        if (target < 0) {
+            _uiState.value = state.copy(errorMessage = "Target saldo tidak valid")
+            return null
+        }
+
+        val descriptionWithMeta = if (state.editPocketDescription.isNotBlank()) {
+            "${state.editPocketType} • ${state.editPocketDescription.trim()}"
+        } else {
+            state.editPocketType
+        }
+
+        val existingPocket = pockets.value.find { it.id == pocketId }
+        val balance = existingPocket?.balance ?: state.editingPocketCurrentBalance
+        val isMain = existingPocket?.isMain ?: state.editingPocketIsMain
+
+        val updatedPocket = Pocket(
+            id = pocketId,
+            name = state.editPocketName.trim(),
+            balance = balance,
+            targetAmount = target.coerceAtLeast(0.0),
+            iconName = state.editPocketIcon,
+            colorHex = state.editPocketColorHex,
+            description = descriptionWithMeta,
+            isMain = isMain
+        )
+
+        return viewModelScope.launch {
+            repository.updatePocket(updatedPocket)
+            closeEditPocketDialog()
+        }
+    }
+
+    private fun extractTypeAndNote(description: String): Pair<String, String> {
+        val knownTypes = listOf("Uang Tunai", "Bank", "Tabungan", "Investasi", "Crypto", "Lainnya")
+        if (description.contains(" • ")) {
+            val typeCandidate = description.substringBefore(" • ").trim()
+            val note = description.substringAfter(" • ").trim()
+            if (knownTypes.contains(typeCandidate)) {
+                return Pair(typeCandidate, note)
+            }
+        }
+        if (knownTypes.contains(description.trim())) {
+            return Pair(description.trim(), "")
+        }
+        return Pair("Tabungan", description.trim())
     }
 
     fun deletePocket(pocketId: String) {

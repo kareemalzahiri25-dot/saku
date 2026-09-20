@@ -14,12 +14,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 enum class ScanEngineMode(val label: String) {
     OCR("OCR Biasa"),
-    AI("Integrasi AI")
+    AI("AI Scan")
+}
+
+enum class ReceiptSource(val label: String) {
+    CAMERA("Kamera"),
+    GALLERY("Galeri")
 }
 
 data class TransactionFormState(
@@ -29,13 +35,23 @@ data class TransactionFormState(
     val selectedCategoryId: String = "",
     val selectedPocketId: String = "",
     val note: String = "",
-    val isScanningSheetOpen: Boolean = false,
+    // Receipt scanning state
+    val selectedScanSource: ReceiptSource? = null,
+    val isScanMethodSheetOpen: Boolean = false,
     val scanMode: ScanEngineMode = ScanEngineMode.OCR,
     val isScanning: Boolean = false,
+    val scanStatusMessage: String? = null,
+    val isReviewDialogOpen: Boolean = false,
     val scannedResult: ScannedReceiptResult? = null,
+    val scannedImageUri: String? = null,
+    val isApiKeyMissingDialogOpen: Boolean = false,
+    val isCameraPermissionDeniedDialogOpen: Boolean = false,
+    val scanErrorMessage: String? = null,
     val scanSuccessMessage: String? = null,
     val errorMessage: String? = null,
-    val isSavedSuccess: Boolean = false
+    val isSavedSuccess: Boolean = false,
+    // Backward compatibility
+    val isScanningSheetOpen: Boolean = false
 )
 
 class TransactionViewModel(
@@ -47,10 +63,10 @@ class TransactionViewModel(
     val formState: StateFlow<TransactionFormState> = _formState.asStateFlow()
 
     val categories: StateFlow<List<Category>> = repository.getAllCategories()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     val pockets: StateFlow<List<Pocket>> = repository.getAllPockets()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     init {
         viewModelScope.launch {
@@ -104,12 +120,158 @@ class TransactionViewModel(
         _formState.value = _formState.value.copy(note = note)
     }
 
+    // --- Scan Struk Flow ---
+
+    fun onSelectScanSource(source: ReceiptSource) {
+        _formState.value = _formState.value.copy(
+            selectedScanSource = source,
+            isScanMethodSheetOpen = true,
+            scanErrorMessage = null
+        )
+    }
+
+    fun onSelectScanMethod(mode: ScanEngineMode): Boolean {
+        _formState.value = _formState.value.copy(scanMode = mode)
+        if (mode == ScanEngineMode.AI && !isAiConfigured()) {
+            _formState.value = _formState.value.copy(
+                isScanMethodSheetOpen = false,
+                isApiKeyMissingDialogOpen = true
+            )
+            return false
+        }
+        _formState.value = _formState.value.copy(isScanMethodSheetOpen = false)
+        return true
+    }
+
+    fun isAiConfigured(): Boolean {
+        return receiptScannerService.isAiScannerConfigured()
+    }
+
+    fun dismissScanMethodSheet() {
+        _formState.value = _formState.value.copy(isScanMethodSheetOpen = false)
+    }
+
+    fun dismissApiKeyMissingDialog() {
+        _formState.value = _formState.value.copy(isApiKeyMissingDialogOpen = false)
+    }
+
+    fun switchToOcrFromMissingKey() {
+        _formState.value = _formState.value.copy(
+            scanMode = ScanEngineMode.OCR,
+            isApiKeyMissingDialogOpen = false
+        )
+    }
+
+    fun onCameraPermissionDenied() {
+        _formState.value = _formState.value.copy(isCameraPermissionDeniedDialogOpen = true)
+    }
+
+    fun dismissCameraPermissionDeniedDialog() {
+        _formState.value = _formState.value.copy(isCameraPermissionDeniedDialogOpen = false)
+    }
+
+    fun onScanError(message: String) {
+        _formState.value = _formState.value.copy(
+            isScanning = false,
+            scanStatusMessage = null,
+            scanErrorMessage = message
+        )
+    }
+
+    fun clearScanError() {
+        _formState.value = _formState.value.copy(scanErrorMessage = null)
+    }
+
+    fun dismissReviewDialog() {
+        _formState.value = _formState.value.copy(isReviewDialogOpen = false)
+    }
+
+    fun applyScannedResultToForm(result: ScannedReceiptResult) {
+        val targetType = result.suggestedType
+        val currentCats = categories.value
+        val matchedCategory = currentCats.find { 
+            it.name.equals(result.suggestedCategory, ignoreCase = true) 
+        } ?: currentCats.firstOrNull { it.type == targetType }
+
+        val formattedAmount = result.totalAmount?.let {
+            if (it % 1.0 == 0.0) it.toLong().toString() else it.toString()
+        } ?: _formState.value.amountString
+
+        val scanNote = if (_formState.value.scanMode == ScanEngineMode.AI) {
+            "Pindai AI Gemini: " + (result.items.takeIf { it.isNotEmpty() }?.joinToString(", ") { "${it.name} (${Formatters.formatRupiah(it.price)})" } ?: result.merchantName ?: "Struk")
+        } else {
+            "Pindai OCR: " + (result.items.takeIf { it.isNotEmpty() }?.joinToString(", ") { it.name } ?: result.merchantName ?: "Struk")
+        }
+
+        _formState.value = _formState.value.copy(
+            isReviewDialogOpen = false,
+            title = result.merchantName ?: _formState.value.title.ifBlank { "Pembelian Struk" },
+            amountString = formattedAmount,
+            type = targetType,
+            selectedCategoryId = matchedCategory?.id ?: _formState.value.selectedCategoryId,
+            note = scanNote,
+            scanSuccessMessage = "Data struk berhasil diterapkan ke formulir. Anda dapat mengeditnya jika diperlukan."
+        )
+
+        if (matchedCategory == null) {
+            viewModelScope.launch {
+                val cats = repository.getAllCategories().first()
+                val match = cats.find { it.name.equals(result.suggestedCategory, ignoreCase = true) }
+                    ?: cats.firstOrNull { it.type == targetType }
+                if (match != null && (_formState.value.selectedCategoryId.isEmpty() || _formState.value.selectedCategoryId != match.id)) {
+                    _formState.value = _formState.value.copy(selectedCategoryId = match.id)
+                }
+            }
+        }
+    }
+
+    fun processReceipt(
+        imageBytes: ByteArray,
+        uriString: String? = null,
+        mode: ScanEngineMode = _formState.value.scanMode
+    ) {
+        viewModelScope.launch {
+            _formState.value = _formState.value.copy(
+                isScanning = true,
+                scanErrorMessage = null,
+                scanStatusMessage = if (mode == ScanEngineMode.AI) {
+                    "Menganalisis struk dengan AI Gemini..."
+                } else {
+                    "Mengekstrak teks struk dengan OCR..."
+                }
+            )
+
+            try {
+                val result = if (mode == ScanEngineMode.AI) {
+                    receiptScannerService.scanReceiptWithAi(imageBytes)
+                } else {
+                    receiptScannerService.scanReceiptOcr(imageBytes)
+                }
+
+                _formState.value = _formState.value.copy(
+                    isScanning = false,
+                    scanStatusMessage = null,
+                    scannedResult = result,
+                    scannedImageUri = uriString,
+                    isReviewDialogOpen = true
+                )
+            } catch (e: Exception) {
+                _formState.value = _formState.value.copy(
+                    isScanning = false,
+                    scanStatusMessage = null,
+                    scanErrorMessage = e.message ?: "Terjadi kesalahan saat memproses gambar struk."
+                )
+            }
+        }
+    }
+
+    // Backward-compatibility functions
     fun openScanningSheet() {
-        _formState.value = _formState.value.copy(isScanningSheetOpen = true)
+        _formState.value = _formState.value.copy(isScanMethodSheetOpen = true)
     }
 
     fun closeScanningSheet() {
-        _formState.value = _formState.value.copy(isScanningSheetOpen = false)
+        _formState.value = _formState.value.copy(isScanMethodSheetOpen = false, isScanningSheetOpen = false)
     }
 
     fun setScanMode(mode: ScanEngineMode) {
@@ -121,48 +283,7 @@ class TransactionViewModel(
     }
 
     fun processReceiptImage(imageBytes: ByteArray, mode: ScanEngineMode = _formState.value.scanMode) {
-        viewModelScope.launch {
-            _formState.value = _formState.value.copy(isScanning = true, errorMessage = null)
-            val result = if (mode == ScanEngineMode.AI) {
-                receiptScannerService.scanReceiptWithAi(imageBytes)
-            } else {
-                receiptScannerService.scanReceiptOcr(imageBytes)
-            }
-
-            // Attempt to match category
-            val matchedCategory = categories.value.find { 
-                it.name.equals(result.suggestedCategory, ignoreCase = true) 
-            } ?: categories.value.firstOrNull { it.type == _formState.value.type }
-
-            val formattedAmount = result.totalAmount?.let {
-                if (it % 1.0 == 0.0) it.toLong().toString() else it.toString()
-            } ?: _formState.value.amountString
-
-            val scanNote = if (mode == ScanEngineMode.AI) {
-                "Pindai AI Gemini: " + (result.items.takeIf { it.isNotEmpty() }?.joinToString(", ") { "${it.name} (${Formatters.formatRupiah(it.price)})" } ?: result.merchantName ?: "Struk")
-            } else {
-                "Pindai OCR: " + (result.items.takeIf { it.isNotEmpty() }?.joinToString(", ") { it.name } ?: result.merchantName ?: "Struk")
-            }
-
-            _formState.value = _formState.value.copy(
-                isScanning = false,
-                scannedResult = result,
-                title = result.merchantName ?: _formState.value.title.ifBlank { "Pembelian Struk" },
-                amountString = formattedAmount,
-                selectedCategoryId = matchedCategory?.id ?: _formState.value.selectedCategoryId,
-                note = scanNote,
-                isScanningSheetOpen = false,
-                scanSuccessMessage = "Struk berhasil dipindai via ${mode.label}!"
-            )
-        }
-    }
-
-    fun triggerOcrDemoScan() {
-        processReceiptImage(ByteArray(0), ScanEngineMode.OCR)
-    }
-
-    fun triggerAiDemoScan() {
-        processReceiptImage(ByteArray(0), ScanEngineMode.AI)
+        processReceipt(imageBytes, null, mode)
     }
 
     fun saveTransaction(onSuccess: () -> Unit) {
