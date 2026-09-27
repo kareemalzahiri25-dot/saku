@@ -23,6 +23,7 @@ import com.example.domain.model.Transaction
 import com.example.domain.model.TransactionType
 import com.example.domain.model.User
 import com.example.domain.repository.SakuRepository
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -277,7 +278,7 @@ class SakuRepositoryImpl(
             // Create ExpenseAllocation for EXPENSE transactions with a pocket
             if (transaction.type == TransactionType.EXPENSE && !transaction.pocketId.isNullOrBlank()) {
                 val allocation = ExpenseAllocationEntity(
-                    id = "ea_${System.currentTimeMillis()}",
+                    id = UUID.randomUUID().toString(),
                     transactionId = transaction.id,
                     pocketId = transaction.pocketId,
                     amount = transaction.amount

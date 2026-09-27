@@ -199,9 +199,13 @@ data class TransactionEntity(
     val note: String,
     val receiptImageUrl: String? = null,
     // Deprecated legacy fields retained for safe migration read/write
+    @Deprecated("Legacy field - use ExpenseAllocation for pocket assignment. Remove in Phase 4.3.")
     val pocketId: String? = null,
+    @Deprecated("Legacy field - use ExpenseAllocation for pocket assignment. Remove in Phase 4.3.")
     val pocketName: String? = null,
+    @Deprecated("Pocket-to-Pocket transfer removed. Use Asset-to-Asset transfer.")
     val targetPocketId: String? = null,
+    @Deprecated("Pocket-to-Pocket transfer removed. Use Asset-to-Asset transfer.")
     val targetPocketName: String? = null
 ) {
     fun toDomain(): Transaction = Transaction(
