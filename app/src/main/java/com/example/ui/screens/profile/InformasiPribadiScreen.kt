@@ -106,6 +106,14 @@ fun InformasiPribadiScreen(
     var avatarBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isAvatarLoaded by remember { mutableStateOf(false) }
 
+    // Sync form dengan user data terbaru dari Room (saat back-stack restore atau user data change)
+    LaunchedEffect(user?.name, user?.email) {
+        user?.let {
+            namaLengkap = it.name
+            email = it.email
+        }
+    }
+
     // Gallery launcher
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri?.let { imageUri ->
@@ -152,7 +160,7 @@ fun InformasiPribadiScreen(
             text = { Text(text = "Apakah data sudah benar?", style = MaterialTheme.typography.bodyMedium.copy(color = SakuTextPrimary)) },
             confirmButton = {
                         Button(
-                            onClick = { viewModel.confirmSaveData() },
+                            onClick = { viewModel.confirmSaveData(namaLengkap, email) },
                             colors = ButtonDefaults.buttonColors(containerColor = SakuDarkGreen)
                         ) {
                             Text("Simpan")

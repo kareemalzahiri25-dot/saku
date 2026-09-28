@@ -1,5 +1,7 @@
 package com.example.ui.screens.dashboard
 
+import android.content.Context
+import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.domain.model.Asset
@@ -9,22 +11,14 @@ import com.example.domain.model.PocketStats
 import com.example.domain.model.Transaction
 import com.example.domain.model.User
 import com.example.domain.repository.SakuRepository
+import com.example.ui.screens.profile.AvatarBitmapUtil
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-
-data class DashboardUiState(
-    val user: User? = null,
-    val summary: FinancialSummary = FinancialSummary(),
-    val assets: List<Asset> = emptyList(),
-    val pockets: List<Pocket> = emptyList(),
-    val recentTransactions: List<Transaction> = emptyList(),
-    val isBalanceVisible: Boolean = true,
-    val isLoading: Boolean = false
-)
 
 class DashboardViewModel(
     private val repository: SakuRepository
@@ -35,6 +29,9 @@ class DashboardViewModel(
 
     val user: StateFlow<User?> = repository.getUser()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    private val _avatarBitmap = MutableStateFlow<Bitmap?>(null)
+    val avatarBitmap: StateFlow<Bitmap?> = _avatarBitmap.asStateFlow()
 
     val summary: StateFlow<FinancialSummary> = repository.getFinancialSummary()
         .stateIn(
@@ -62,6 +59,14 @@ class DashboardViewModel(
     fun deleteTransaction(transactionId: String) {
         viewModelScope.launch {
             repository.deleteTransaction(transactionId)
+        }
+    }
+
+    // Load avatar bitmap from internal storage
+    fun loadAvatarBitmap(context: Context) {
+        viewModelScope.launch {
+            val bitmap = AvatarBitmapUtil.loadAvatarBitmap(context)
+            _avatarBitmap.value = bitmap
         }
     }
 }

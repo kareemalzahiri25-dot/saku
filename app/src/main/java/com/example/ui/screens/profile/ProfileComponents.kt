@@ -1,7 +1,11 @@
 package com.example.ui.screens.profile
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -78,6 +82,7 @@ import com.example.ui.theme.SakuTextSecondary
 fun ProfileHeader(
     name: String,
     email: String,
+    avatarBitmap: android.graphics.Bitmap?,
     onNavigateToInformasiPribadi: () -> Unit
 ) {
     SakuCard(
@@ -90,21 +95,42 @@ fun ProfileHeader(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Avatar dengan initial letter
+            // Avatar dengan bitmap atau initial letter
             Box(
                 modifier = Modifier
                     .size(56.dp)
-                    .clip(CircleShape)
-                    .background(SakuDarkGreen),
+                    .clip(CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = name.firstOrNull()?.uppercase() ?: "B",
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
+                if (avatarBitmap != null) {
+                    // Display avatar bitmap if available
+                    val painter = BitmapPainter(avatarBitmap.asImageBitmap())
+                    Image(
+                        painter = painter,
+                        contentDescription = "Avatar Pengguna",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
                     )
-                )
+                } else {
+                    // Fallback to initial letter if no bitmap
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(SakuDarkGreen),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = name.firstOrNull()?.uppercase() ?: "B",
+                            style = MaterialTheme.typography.headlineMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.width(16.dp))

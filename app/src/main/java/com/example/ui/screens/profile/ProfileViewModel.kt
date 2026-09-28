@@ -7,6 +7,10 @@ import com.example.data.service.CurrencyConversionService
 import com.example.domain.model.FinancialSummary
 import com.example.domain.model.User
 import com.example.domain.repository.SakuRepository
+import android.content.Context
+import android.graphics.Bitmap
+import com.example.ui.screens.profile.AvatarBitmapUtil
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +53,9 @@ class ProfileViewModel(
     val transactionCount: StateFlow<Int> = repository.getAllTransactions()
         .map { transactions -> transactions.size }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    private val _avatarBitmap = MutableStateFlow<Bitmap?>(null)
+    val avatarBitmap: StateFlow<Bitmap?> = _avatarBitmap.asStateFlow()
 
     init {
         val existingKey = apiKeyConfigService.getGeminiApiKey() ?: ""
@@ -142,15 +149,50 @@ class ProfileViewModel(
         _uiState.value = _uiState.value.copy(showSaveConfirmationDialog = false)
     }
 
-    fun confirmSaveData() {
-        // TODO: Save data (akan diimplementasi saat DataStore ready di Batch 3)
-        _uiState.value = _uiState.value.copy(
-            showSaveConfirmationDialog = false,
-            isSuccessMessage = "Data berhasil disimpan"
+    fun confirmSaveData(namaLengkap: String, email: String) {
+        val currentUser = user.value ?: return
+        
+        // Validasi minimal
+        if (namaLengkap.isBlank() || email.isBlank()) {
+            _uiState.value = _uiState.value.copy(
+                showSaveConfirmationDialog = false,
+                isSuccessMessage = "Nama dan Email tidak boleh kosong"
+            )
+            return
+        }
+        
+        val updatedUser = currentUser.copy(
+            name = namaLengkap,
+            email = email
         )
+        
+        viewModelScope.launch {
+            try {
+                repository.saveUser(updatedUser)
+                // Success: Update UI di main thread
+                _uiState.value = _uiState.value.copy(
+                    showSaveConfirmationDialog = false,
+                    isSuccessMessage = "Data berhasil disimpan"
+                )
+            } catch (e: Exception) {
+                // Fail: Error handling
+                _uiState.value = _uiState.value.copy(
+                    showSaveConfirmationDialog = false,
+                    isSuccessMessage = "Gagal menyimpan: ${e.message}"
+                )
+            }
+        }
     }
 
     fun toggleEmailInput() {
         _uiState.value = _uiState.value.copy(showEmailInput = !_uiState.value.showEmailInput)
+    }
+
+    // Load avatar bitmap from internal storage
+    fun loadAvatarBitmap(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bitmap = AvatarBitmapUtil.loadAvatarBitmap(context)
+            _avatarBitmap.value = bitmap
+        }
     }
 }

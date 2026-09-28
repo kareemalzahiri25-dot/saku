@@ -50,20 +50,30 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.core.Formatters
+import com.example.ui.screens.profile.AvatarBitmapUtil
+import androidx.compose.foundation.Image
 import com.example.domain.model.Pocket
 import com.example.domain.model.PocketStats
 import com.example.domain.model.Transaction
@@ -103,6 +113,23 @@ fun DashboardScreen(
     val pocketStats by viewModel.pocketStats.collectAsStateWithLifecycle()
     val recentTransactions by viewModel.recentTransactions.collectAsStateWithLifecycle()
     val isBalanceVisible by viewModel.isBalanceVisible.collectAsStateWithLifecycle()
+    val avatarBitmap by viewModel.avatarBitmap.collectAsStateWithLifecycle()
+
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Load avatar when Dashboard resumes (e.g., after returning from InformasiPribadi)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.loadAvatarBitmap(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -146,12 +173,26 @@ fun DashboardScreen(
                             .testTag("dashboard_profile_avatar")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Person,
-                                contentDescription = "Profil Pengguna",
-                                tint = SakuDarkGreen,
-                                modifier = Modifier.size(24.dp)
-                            )
+                            if (avatarBitmap != null) {
+                                // Display avatar bitmap if available
+                                val painter = BitmapPainter(avatarBitmap!!.asImageBitmap())
+                                Image(
+                                    painter = painter,
+                                    contentDescription = "Profil Pengguna",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .clip(CircleShape)
+                                )
+                            } else {
+                                // Fallback to icon if no bitmap
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = "Profil Pengguna",
+                                    tint = SakuDarkGreen,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
                         }
                     }
                 }

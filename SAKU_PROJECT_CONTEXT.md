@@ -220,7 +220,7 @@ SakuRepositoryImpl.insertTransaction()
         3. assetDao.updateAsset(updatedAsset)
         4. transactionDao.insertTransaction(entity)
         5. IF pocketId not blank → expenseAllocationDao.insertAllocation(
-               id="ea_${timestamp}", transactionId, pocketId, amount)
+               id=UUID.randomUUID().toString(), transactionId, pocketId, amount)
     }
     ↓
 ExpenseAllocation created → PocketStats.realization = SUM(ExpenseAllocation.amount)
@@ -280,4 +280,4 @@ Kantong/Dashboard: Planned allocation shown (progress bar target)
 
 ---
 
-*Document generated from actual source code audit. Last verified against commit `551e271`.*
+*Document generated from actual source code audit. Last verified against commit `d7d23c1`.*

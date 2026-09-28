@@ -156,7 +156,7 @@ Records all locked decisions, open questions, and future considerations. Each en
 - **Reason**: 
   - One Transaction can have multiple ExpenseAllocations (multi-pocket Phase 4.3)
   - Using `ea_${transaction.id}` would cause collision when multiple allocations exist
-  - UUID is collision-proof, future-compatible, no schema change needed
+  - UUID is collision-resistant, future-compatible, no schema change needed
 - **Current State**: UUID implemented in SakuRepositoryImpl.kt line 280 (Phase 4.1)
 - **Phase**: Phase 4.1 Implementation
 

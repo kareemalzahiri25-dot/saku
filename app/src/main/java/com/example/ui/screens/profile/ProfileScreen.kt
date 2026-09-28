@@ -11,6 +11,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -20,6 +21,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Image
+import com.example.ui.screens.profile.AvatarBitmapUtil
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
@@ -45,6 +55,23 @@ fun ProfileScreen(
     val summary by viewModel.summary.collectAsStateWithLifecycle()
     val transactionCount by viewModel.transactionCount.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val avatarBitmap by viewModel.avatarBitmap.collectAsStateWithLifecycle()
+
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Load avatar when ProfileScreen resumes (e.g., after returning from InformasiPribadi)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.loadAvatarBitmap(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     // Extract user data with fallback
     val userName = user?.name ?: "Budi Santoso"
@@ -87,6 +114,7 @@ fun ProfileScreen(
                     ProfileHeader(
                         name = userName,
                         email = userEmail,
+                        avatarBitmap = avatarBitmap,
                         onNavigateToInformasiPribadi = onNavigateToInformasiPribadi
                     )
                 }

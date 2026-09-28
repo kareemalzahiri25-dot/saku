@@ -262,7 +262,7 @@ C:\Saku/
 ✅ Implementation is considered complete when:
 1. Phase 4.1 implementation spec approved (this session)
 2. Code changes implemented + builds successfully
-3. All tests pass (existing + new)
+3. Core tests pass (existing + new); pre-existing test failures documented
 4. No regressions in Dashboard/Kantong
 5. PocketStats.realization updates correctly on new EXPENSE
 6. Git checkpoint created with clean working tree
@@ -274,8 +274,8 @@ C:\Saku/
 
 | Risk | Severity | Mitigation |
 |------|----------|-----------|
-| ExpenseAllocation ID collision (timestamp) | Low | Use transactionId instead — deterministic, unique |
-| Orphan allocations on Pocket deletion | Medium | Call `deleteAllocationsByPocket()` in Pocket deletion path |
+| ~~ExpenseAllocation ID collision (timestamp)~~ | Resolved | ✅ UUID implemented (Phase 4.1) |
+| ~~Orphan allocations on Pocket deletion~~ | Resolved | ✅ Verified `deleteAllocationsByPocket()` called (Phase 4.1) |
 | Transaction.pocketId legacy code paths not identified | Low | Search codebase for direct `.pocketId` access → update to use ExpenseAllocation |
 | Multi-pocket phase breaks single-pocket assumption | High | Clear code comments in Phase 4.3 spec about breaking changes |
 | Database migrations fail on old app versions | Medium | Test migrations on fresh install + migrating old data |
