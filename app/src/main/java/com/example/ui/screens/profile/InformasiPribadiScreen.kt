@@ -29,10 +29,13 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Help
+import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -75,10 +78,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import com.example.ui.screens.profile.ApiKeyVerificationStatus
 import com.example.ui.theme.SakuCreamBackground
 import com.example.ui.theme.SakuCreamSurface
 import com.example.ui.theme.SakuDarkGreen
 import com.example.ui.theme.SakuExpenseRed
+import com.example.ui.theme.SakuGoldAccent
+import com.example.ui.theme.SakuIncomeGreen
 import com.example.ui.theme.SakuTextMuted
 import com.example.ui.theme.SakuTextPrimary
 import com.example.ui.theme.SakuTextSecondary
@@ -559,11 +565,42 @@ fun ApiKeyConfigurationSection(
             }
         }
 
-        Text(
-            text = "Status: Belum Terverifikasi",
-            style = MaterialTheme.typography.bodySmall.copy(
-                color = SakuTextMuted
+        // Verification status display
+        val status = uiState.apiKeyVerificationStatus
+        val statusColor = when (status) {
+            ApiKeyVerificationStatus.Verified -> SakuIncomeGreen
+            ApiKeyVerificationStatus.Invalid, ApiKeyVerificationStatus.QuotaExceeded -> SakuExpenseRed
+            ApiKeyVerificationStatus.NetworkError -> SakuExpenseRed
+            ApiKeyVerificationStatus.Verifying -> SakuGoldAccent
+            ApiKeyVerificationStatus.Unknown -> SakuTextMuted
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = when (status) {
+                    ApiKeyVerificationStatus.Verified -> Icons.Default.CheckCircle
+                    ApiKeyVerificationStatus.Invalid, ApiKeyVerificationStatus.QuotaExceeded -> Icons.Default.Close
+                    ApiKeyVerificationStatus.NetworkError -> Icons.Default.WifiOff
+                    ApiKeyVerificationStatus.Verifying -> Icons.Default.HourglassTop
+                    ApiKeyVerificationStatus.Unknown -> Icons.Default.Help
+                },
+                contentDescription = null,
+                tint = statusColor,
+                modifier = Modifier.size(16.dp)
             )
-        )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Status: ${status.label}",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = statusColor,
+                    fontWeight = if (status == ApiKeyVerificationStatus.Verified) FontWeight.Bold else FontWeight.Normal
+                )
+            )
+        }
     }
 }

@@ -192,11 +192,22 @@ class TransactionViewModel(
             )
             return false
         }
+        if (mode == ScanEngineMode.AI && !isApiKeyVerified()) {
+            _formState.value = _formState.value.copy(
+                isScanMethodSheetOpen = false,
+                isApiKeyMissingDialogOpen = true
+            )
+            return false
+        }
         _formState.value = _formState.value.copy(isScanMethodSheetOpen = false)
         return true
     }
 
     fun isAiConfigured(): Boolean {
+        return receiptScannerService.isAiScannerConfigured()
+    }
+
+    fun isApiKeyVerified(): Boolean {
         return receiptScannerService.isAiScannerConfigured()
     }
 

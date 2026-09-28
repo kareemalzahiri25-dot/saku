@@ -5,9 +5,9 @@ import com.example.data.local.SakuDatabase
 import com.example.data.repository.SakuRepositoryImpl
 import com.example.data.service.ApiKeyConfigService
 import com.example.data.service.CurrencyConversionService
-import com.example.data.service.DefaultApiKeyConfigService
 import com.example.data.service.DefaultCurrencyConversionService
 import com.example.data.service.DefaultReceiptScannerService
+import com.example.data.service.EncryptedApiKeyConfigService
 import com.example.data.service.ReceiptScannerService
 import com.example.domain.repository.SakuRepository
 import kotlinx.coroutines.CoroutineScope
@@ -19,7 +19,7 @@ class SakuAppContainer(context: Context) {
 
     val database: SakuDatabase = SakuDatabase.getDatabase(context, applicationScope)
     val repository: SakuRepository = SakuRepositoryImpl(database)
-    val apiKeyConfigService: ApiKeyConfigService = DefaultApiKeyConfigService(context)
+    val apiKeyConfigService: ApiKeyConfigService = EncryptedApiKeyConfigService(context)
     val receiptScannerService: ReceiptScannerService = DefaultReceiptScannerService(apiKeyConfigService)
     val currencyConversionService: CurrencyConversionService = DefaultCurrencyConversionService()
 }
