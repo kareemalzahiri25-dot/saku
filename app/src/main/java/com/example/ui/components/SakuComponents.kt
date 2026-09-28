@@ -143,7 +143,6 @@ fun SakuBottomNavigation(
         modifier = Modifier
             .fillMaxWidth()
             .shadow(16.dp, RoundedCornerShape(topStart = cornerRadius, topEnd = cornerRadius))
-            .windowInsetsPadding(WindowInsets.navigationBars)
             .height(navbarHeight + notchDepth)
     ) {
         // Background dengan notch

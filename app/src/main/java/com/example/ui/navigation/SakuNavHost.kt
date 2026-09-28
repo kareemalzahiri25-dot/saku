@@ -1,7 +1,11 @@
 package com.example.ui.navigation
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -56,18 +60,20 @@ fun SakuNavHost(
         containerColor = SakuCreamBackground,
         bottomBar = {
             if (showBottomBar) {
-                SakuBottomNavigation(
-                    currentRoute = currentRoute,
-                    onNavigateToRoute = { targetRoute ->
-                        navController.navigate(targetRoute) {
-                            popUpTo(Screen.Dashboard.route) {
-                                saveState = true
+                Box(Modifier.windowInsetsPadding(WindowInsets.navigationBars)) {
+                    SakuBottomNavigation(
+                        currentRoute = currentRoute,
+                        onNavigateToRoute = { targetRoute ->
+                            navController.navigate(targetRoute) {
+                                popUpTo(Screen.Dashboard.route) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = targetRoute != Screen.Dashboard.route
                             }
-                            launchSingleTop = true
-                            restoreState = targetRoute != Screen.Dashboard.route
                         }
-                    }
-                )
+                    )
+                }
             }
         }
     ) { innerPadding ->
