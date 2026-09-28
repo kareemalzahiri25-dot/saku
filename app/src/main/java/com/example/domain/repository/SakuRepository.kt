@@ -50,6 +50,7 @@ interface SakuRepository {
     fun getAllTransactions(): Flow<List<Transaction>>
     fun getRecentTransactions(limit: Int = 10): Flow<List<Transaction>>
     fun getTransactionsByAsset(assetId: String): Flow<List<Transaction>>
+    fun getTransactionsBetween(startMillis: Long, endMillis: Long): Flow<List<Transaction>>
     suspend fun getTransactionById(id: String): Transaction?
     suspend fun insertTransaction(transaction: Transaction)
     suspend fun deleteTransaction(transactionId: String)

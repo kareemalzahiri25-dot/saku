@@ -3,13 +3,14 @@ package com.example.ui.screens.report
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.core.Formatters
+import com.example.domain.model.Asset
 import com.example.domain.model.CategoryExpenseSummary
 import com.example.domain.model.FinancialReport
 import com.example.domain.model.FinancialSummary
-import com.example.domain.model.Pocket
 import com.example.domain.model.Transaction
 import com.example.domain.model.TransactionType
 import com.example.domain.repository.SakuRepository
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -17,29 +18,101 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import java.util.Calendar
+import kotlin.math.max
+import kotlin.math.min
 
-enum class ReportPeriod(val titleIndo: String, val monthOffset: Int = 0) {
-    THIS_MONTH("Bulan Ini", 0),
-    THREE_MONTHS("3 Bulan", 0),
-    SIX_MONTHS("6 Bulan", 0),
-    THIS_YEAR("Tahun Ini", 0),
-    CUSTOM("Kustom", -1),
-    LAST_MONTH("Bulan Lalu", -1)
+// ============================================================
+// Period Enum - Single source of truth for all report sections
+// ============================================================
+enum class ReportPeriod(val titleIndo: String) {
+    TODAY("Hari Ini"),
+    THIS_WEEK("Minggu Ini"),
+    LAST_WEEK("Minggu Lalu"),
+    THIS_MONTH("Bulan Ini"),
+    LAST_MONTH("Bulan Lalu"),
+    CUSTOM("Kustom")
 }
 
-data class MonthlyCashflow(
-    val monthLabel: String,      // "Jun", "Jul", "Agt", "Sep"
-    val fullMonthLabel: String,  // "Juni 2026"
-    val year: Int,
-    val monthIndex: Int,         // 0..11
+// ============================================================
+// Data classes for chart rendering
+// ============================================================
+data class CashflowPoint(
+    val label: String,           // X-axis label (date/week)
+    val dateMillis: Long,        // For tooltip/sorting
     val income: Double,
-    val expense: Double,
-    val net: Double,
-    val savingsRate: Int
+    val expense: Double
 )
 
+data class BalancePoint(
+    val label: String,
+    val dateMillis: Long,
+    val balance: Double
+)
+
+data class TopTransactionItem(
+    val id: String,
+    val title: String,
+    val categoryName: String,
+    val categoryIcon: String,
+    val dateMillis: Long,
+    val amount: Double,
+    val type: TransactionType
+)
+
+enum class TopTransactionFilter(val title: String) {
+    TOP_5("Top 5"),
+    TOP_10("Top 10"),
+    TOP_20("Top 20")
+}
+
+enum class TransactionTypeFilter(val title: String) {
+    ALL("Semua"),
+    INCOME("Pemasukan"),
+    EXPENSE("Pengeluaran")
+}
+
+// ============================================================
+// UI State
+// ============================================================
+data class ReportUiState(
+    val period: ReportPeriod = ReportPeriod.THIS_MONTH,
+    val customStartMillis: Long = 0L,
+    val customEndMillis: Long = 0L,
+    val periodTitle: String = "Bulan Ini",
+    val totalAssetBalance: Double = 0.0,
+    // Summary
+    val totalIncome: Double = 0.0,
+    val totalExpense: Double = 0.0,
+    val incomeChangePercent: Double = 0.0,    // vs previous period
+    val expenseChangePercent: Double = 0.0,   // vs previous period
+    // Cashflow line chart
+    val cashflowPoints: List<CashflowPoint> = emptyList(),
+    // Category donut
+    val donutSegments: List<DonutCategorySegment> = emptyList(),
+    val categoryBreakdown: List<CategoryExpenseSummary> = emptyList(),
+    // Balance trend
+    val balancePoints: List<BalancePoint> = emptyList(),
+    // Top transactions
+    val topTransactions: List<TopTransactionItem> = emptyList(),
+    val topTransactionFilter: TopTransactionFilter = TopTransactionFilter.TOP_5,
+    val transactionTypeFilter: TransactionTypeFilter = TransactionTypeFilter.ALL,
+    // Loading/empty states
+    val isLoading: Boolean = false,
+    val hasData: Boolean = false
+) {
+    val selectedPeriodTitle: String
+        get() = when (period) {
+            ReportPeriod.CUSTOM -> {
+                if (customStartMillis > 0L && customEndMillis > 0L) {
+                    "${Formatters.formatShortDateIndo(customStartMillis)} - ${Formatters.formatShortDateIndo(customEndMillis)}"
+                } else periodTitle
+            }
+            else -> periodTitle
+        }
+}
+
+// Donut segment
 data class DonutCategorySegment(
     val categoryName: String,
     val categoryIcon: String,
@@ -47,34 +120,6 @@ data class DonutCategorySegment(
     val percentage: Float,
     val colorHex: String,
     val isOther: Boolean = false
-)
-
-data class FinancialInsights(
-    val savingsInsight: String,
-    val topCategoryInsight: String?,
-    val cashflowTrendInsight: String?,
-    val recommendation: String,
-    val isSurplus: Boolean
-)
-
-data class ReportUiState(
-    val period: ReportPeriod = ReportPeriod.THIS_MONTH,
-    val customMonthOffset: Int = -1, // Defaults to 1 month ago for custom
-    val periodTitle: String = "Bulan Ini",
-    val chartSummaryTitle: String = "Tren 4 Bulan Terakhir",
-    val totalAssetBalance: Double = 0.0,
-    val totalPlannedAllocation: Double = 0.0,
-    val totalIncome: Double = 0.0,
-    val totalExpense: Double = 0.0,
-    val netCashflow: Double = 0.0,
-    val savingsRatePercentage: Int = 0,
-    val transactionCount: Int = 0,
-    val monthlyCashflows: List<MonthlyCashflow> = emptyList(),
-    val categoryBreakdown: List<CategoryExpenseSummary> = emptyList(),
-    val donutSegments: List<DonutCategorySegment> = emptyList(),
-    val selectedCategoryName: String? = null,
-    val selectedMonthIndex: Int? = null,
-    val insights: FinancialInsights? = null
 )
 
 val CATEGORY_CHART_COLORS = listOf(
@@ -97,38 +142,46 @@ class ReportViewModel(
     private val _selectedPeriod = MutableStateFlow(ReportPeriod.THIS_MONTH)
     val selectedPeriod: StateFlow<ReportPeriod> = _selectedPeriod.asStateFlow()
 
-    private val _customMonthOffset = MutableStateFlow(-1)
-    private val _selectedCategoryName = MutableStateFlow<String?>(null)
-    private val _selectedMonthIndex = MutableStateFlow<Int?>(null)
+    private val _customStartMillis = MutableStateFlow(0L)
+    private val _customEndMillis = MutableStateFlow(0L)
+    private val _topTransactionFilter = MutableStateFlow(TopTransactionFilter.TOP_5)
+    private val _transactionTypeFilter = MutableStateFlow(TransactionTypeFilter.ALL)
 
-    private data class FilterParams(
+    val topTransactionFilter: StateFlow<TopTransactionFilter> = _topTransactionFilter.asStateFlow()
+    val transactionTypeFilter: StateFlow<TransactionTypeFilter> = _transactionTypeFilter.asStateFlow()
+
+    private data class FilterState(
         val period: ReportPeriod,
-        val customOffset: Int,
-        val selectedCategory: String?,
-        val selectedMonth: Int?
+        val customStart: Long,
+        val customEnd: Long,
+        val topFilter: TopTransactionFilter,
+        val typeFilter: TransactionTypeFilter
     )
 
+    private val filterState: Flow<FilterState> = combine(
+        _selectedPeriod,
+        _customStartMillis,
+        _customEndMillis,
+        _topTransactionFilter,
+        _transactionTypeFilter
+    ) { period, customStart, customEnd, topFilter, typeFilter ->
+        FilterState(period, customStart, customEnd, topFilter, typeFilter)
+    }
+
+    // Main UI State - combines all data sources with filter
     val uiState: StateFlow<ReportUiState> = combine(
-        combine(
-            repository.getAllTransactions(),
-            repository.getAllPockets()
-        ) { txs, pks -> Pair(txs, pks) },
-        combine(
-            _selectedPeriod,
-            _customMonthOffset,
-            _selectedCategoryName,
-            _selectedMonthIndex
-        ) { period, customOffset, selCat, selMonth ->
-            FilterParams(period, customOffset, selCat, selMonth)
-        }
-    ) { (transactions, pockets), filters ->
+        repository.getAllTransactions(),
+        repository.getActiveAssets(),
+        filterState
+    ) { transactions, assets, filters ->
         calculateReportUiState(
             transactions = transactions,
-            pockets = pockets,
+            assets = assets,
             period = filters.period,
-            customOffset = filters.customOffset,
-            selectedCategory = filters.selectedCategory,
-            selectedMonth = filters.selectedMonth
+            customStartMillis = filters.customStart,
+            customEndMillis = filters.customEnd,
+            topFilter = filters.topFilter,
+            typeFilter = filters.typeFilter
         )
     }.stateIn(
         viewModelScope,
@@ -136,197 +189,197 @@ class ReportViewModel(
         ReportUiState()
     )
 
+    // ============================================================
+    // Public Actions
+    // ============================================================
+    fun selectPeriod(period: ReportPeriod) {
+        _selectedPeriod.value = period
+        _customStartMillis.value = 0L
+        _customEndMillis.value = 0L
+    }
+
+    fun selectCustomRange(startMillis: Long, endMillis: Long) {
+        _selectedPeriod.value = ReportPeriod.CUSTOM
+        _customStartMillis.value = startMillis
+        _customEndMillis.value = endMillis
+    }
+
+    fun setTopTransactionFilter(filter: TopTransactionFilter) {
+        _topTransactionFilter.value = filter
+    }
+
+    fun setTransactionTypeFilter(filter: TransactionTypeFilter) {
+        _transactionTypeFilter.value = filter
+    }
+
+    // Backward compatibility for existing tests
     val report: StateFlow<FinancialReport> = uiState.map { state ->
         FinancialReport(
             periodTitle = state.periodTitle,
             summary = FinancialSummary(
                 totalAssetBalance = state.totalAssetBalance,
-                totalPlannedAllocation = state.totalPlannedAllocation,
-                totalIncome = 0.0,
-                totalExpense = 0.0,
+                totalPlannedAllocation = 0.0,
+                totalIncome = state.totalIncome,
+                totalExpense = state.totalExpense,
                 totalIncomeThisMonth = state.totalIncome,
                 totalExpenseThisMonth = state.totalExpense,
-                netSavingsThisMonth = state.netCashflow,
-                savingsRatePercentage = state.savingsRatePercentage
+                netSavingsThisMonth = state.totalIncome - state.totalExpense,
+                savingsRatePercentage = if (state.totalIncome > 0) ((state.totalIncome - state.totalExpense) / state.totalIncome * 100).toInt().coerceIn(0, 100) else 0
             ),
             categoryBreakdown = state.categoryBreakdown,
-            transactionCount = state.transactionCount
+            transactionCount = state.cashflowPoints.sumOf { (it.income + it.expense).toInt() }
         )
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
         FinancialReport(
             periodTitle = "Periode Berjalan",
-            summary = FinancialSummary(
-                totalAssetBalance = 0.0,
-                totalPlannedAllocation = 0.0,
-                totalIncome = 0.0,
-                totalExpense = 0.0,
-                totalIncomeThisMonth = 0.0,
-                totalExpenseThisMonth = 0.0,
-                netSavingsThisMonth = 0.0,
-                savingsRatePercentage = 0
-            ),
+            summary = FinancialSummary(),
             categoryBreakdown = emptyList(),
             transactionCount = 0
         )
     )
 
-    fun selectPeriod(period: ReportPeriod) {
-        _selectedPeriod.value = period
-        _selectedCategoryName.value = null
-        _selectedMonthIndex.value = null
-    }
-
-    fun selectCustomMonth(offset: Int) {
-        _customMonthOffset.value = offset
-        _selectedPeriod.value = ReportPeriod.CUSTOM
-        _selectedCategoryName.value = null
-        _selectedMonthIndex.value = null
-    }
-
-    fun toggleCategorySelection(categoryName: String) {
-        if (_selectedCategoryName.value == categoryName) {
-            _selectedCategoryName.value = null
-        } else {
-            _selectedCategoryName.value = categoryName
-        }
-    }
-
-    fun selectMonthBar(monthIndex: Int?) {
-        _selectedMonthIndex.value = monthIndex
-    }
-
+    // ============================================================
+    // Core Calculation
+    // ============================================================
     private fun calculateReportUiState(
         transactions: List<Transaction>,
-        pockets: List<Pocket>,
+        assets: List<Asset>,
         period: ReportPeriod,
-        customOffset: Int,
-        selectedCategory: String?,
-        selectedMonth: Int?
+        customStartMillis: Long,
+        customEndMillis: Long,
+        topFilter: TopTransactionFilter,
+        typeFilter: TransactionTypeFilter
     ): ReportUiState {
-        val now = Calendar.getInstance()
-        val currentYear = now.get(Calendar.YEAR)
-        val currentMonth = now.get(Calendar.MONTH) // 0..11
 
-        val totalBalance = pockets.sumOf { it.targetAmount }
-
-        // Determine months to include in the monthly cashflow trend chart
-        val trendMonths = mutableListOf<Pair<Int, Int>>() // Pair(year, monthIndex)
-        val periodMonths = mutableListOf<Pair<Int, Int>>()
-        var periodTitle = ""
-        var chartSummaryTitle = ""
-
-        when (period) {
-            ReportPeriod.THIS_MONTH -> {
-                periodMonths.add(Pair(currentYear, currentMonth))
-                periodTitle = formatMonthYear(currentMonth, currentYear)
-                chartSummaryTitle = "Tren 4 Bulan Terakhir"
-
-                // Show last 4 months in cashflow trend
-                for (offset in 3 downTo 0) {
-                    val cal = Calendar.getInstance()
-                    cal.add(Calendar.MONTH, -offset)
-                    trendMonths.add(Pair(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH)))
+        val (periodStart, periodEnd, periodTitle) = when (period) {
+            ReportPeriod.TODAY -> {
+                val start = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
                 }
+                val end = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, 23)
+                    set(Calendar.MINUTE, 59)
+                    set(Calendar.SECOND, 59)
+                    set(Calendar.MILLISECOND, 999)
+                }
+                Triple(start.timeInMillis, end.timeInMillis, "Hari Ini")
+            }
+            ReportPeriod.THIS_WEEK -> {
+                val cal = Calendar.getInstance()
+                cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                val start = cal.timeInMillis
+                cal.add(Calendar.DAY_OF_WEEK, 6)
+                cal.set(Calendar.HOUR_OF_DAY, 23)
+                cal.set(Calendar.MINUTE, 59)
+                cal.set(Calendar.SECOND, 59)
+                cal.set(Calendar.MILLISECOND, 999)
+                val end = cal.timeInMillis
+                Triple(start, end, "Minggu Ini")
+            }
+            ReportPeriod.LAST_WEEK -> {
+                val cal = Calendar.getInstance()
+                cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
+                cal.add(Calendar.WEEK_OF_YEAR, -1)
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                val start = cal.timeInMillis
+                cal.add(Calendar.DAY_OF_WEEK, 6)
+                cal.set(Calendar.HOUR_OF_DAY, 23)
+                cal.set(Calendar.MINUTE, 59)
+                cal.set(Calendar.SECOND, 59)
+                cal.set(Calendar.MILLISECOND, 999)
+                val end = cal.timeInMillis
+                Triple(start, end, "Minggu Lalu")
+            }
+            ReportPeriod.THIS_MONTH -> {
+                val cal = Calendar.getInstance()
+                cal.set(Calendar.DAY_OF_MONTH, 1)
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                val start = cal.timeInMillis
+                cal.add(Calendar.MONTH, 1)
+                cal.add(Calendar.MILLISECOND, -1)
+                val end = cal.timeInMillis
+                Triple(start, end, "Bulan Ini")
             }
             ReportPeriod.LAST_MONTH -> {
                 val cal = Calendar.getInstance()
                 cal.add(Calendar.MONTH, -1)
-                val yr = cal.get(Calendar.YEAR)
-                val mo = cal.get(Calendar.MONTH)
-                periodMonths.add(Pair(yr, mo))
-                periodTitle = formatMonthYear(mo, yr)
-                chartSummaryTitle = "Tren 4 Bulan (Bulan Lalu)"
-
-                for (offset in 3 downTo 0) {
-                    val c = Calendar.getInstance()
-                    c.add(Calendar.MONTH, -1 - offset)
-                    trendMonths.add(Pair(c.get(Calendar.YEAR), c.get(Calendar.MONTH)))
-                }
-            }
-            ReportPeriod.THREE_MONTHS -> {
-                chartSummaryTitle = "Tren 3 Bulan Terakhir"
-                for (offset in 2 downTo 0) {
-                    val cal = Calendar.getInstance()
-                    cal.add(Calendar.MONTH, -offset)
-                    val p = Pair(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH))
-                    periodMonths.add(p)
-                    trendMonths.add(p)
-                }
-                val first = periodMonths.first()
-                val last = periodMonths.last()
-                periodTitle = "${formatShortMonth(first.second)} - ${formatShortMonth(last.second)} ${last.first}"
-            }
-            ReportPeriod.SIX_MONTHS -> {
-                chartSummaryTitle = "Tren 6 Bulan Terakhir"
-                for (offset in 5 downTo 0) {
-                    val cal = Calendar.getInstance()
-                    cal.add(Calendar.MONTH, -offset)
-                    val p = Pair(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH))
-                    periodMonths.add(p)
-                    trendMonths.add(p)
-                }
-                val first = periodMonths.first()
-                val last = periodMonths.last()
-                periodTitle = "${formatShortMonth(first.second)} - ${formatShortMonth(last.second)} ${last.first}"
-            }
-            ReportPeriod.THIS_YEAR -> {
-                chartSummaryTitle = "Tren Tahun $currentYear"
-                for (m in 0..currentMonth) {
-                    val p = Pair(currentYear, m)
-                    periodMonths.add(p)
-                    trendMonths.add(p)
-                }
-                periodTitle = "Tahun $currentYear"
+                cal.set(Calendar.DAY_OF_MONTH, 1)
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                val start = cal.timeInMillis
+                cal.add(Calendar.MONTH, 1)
+                cal.add(Calendar.MILLISECOND, -1)
+                val end = cal.timeInMillis
+                Triple(start, end, "Bulan Lalu")
             }
             ReportPeriod.CUSTOM -> {
-                val cal = Calendar.getInstance()
-                cal.add(Calendar.MONTH, customOffset)
-                val yr = cal.get(Calendar.YEAR)
-                val mo = cal.get(Calendar.MONTH)
-                periodMonths.add(Pair(yr, mo))
-                periodTitle = formatMonthYear(mo, yr)
-                chartSummaryTitle = "Tren 4 Bulan Terpilih"
-
-                for (offset in 3 downTo 0) {
-                    val c = Calendar.getInstance()
-                    c.add(Calendar.MONTH, customOffset - offset)
-                    trendMonths.add(Pair(c.get(Calendar.YEAR), c.get(Calendar.MONTH)))
+                if (customStartMillis > 0L && customEndMillis > 0L) {
+                    Triple(customStartMillis, customEndMillis, "Kustom")
+                } else {
+                    val cal = Calendar.getInstance()
+                    cal.set(Calendar.DAY_OF_MONTH, 1)
+                    cal.set(Calendar.HOUR_OF_DAY, 0)
+                    cal.set(Calendar.MINUTE, 0)
+                    cal.set(Calendar.SECOND, 0)
+                    cal.set(Calendar.MILLISECOND, 0)
+                    val start = cal.timeInMillis
+                    cal.add(Calendar.MONTH, 1)
+                    cal.add(Calendar.MILLISECOND, -1)
+                    val end = cal.timeInMillis
+                    Triple(start, end, "Bulan Ini")
                 }
             }
         }
 
-        // Calculate period aggregated totals
+        // Filter transactions for current period
         val periodTransactions = transactions.filter { tx ->
-            isTransactionInMonths(tx.dateMillis, periodMonths)
+            tx.dateMillis in periodStart..periodEnd
+        }.sortedByDescending { it.dateMillis }
+
+        // Previous period for comparison (same duration, immediately before)
+        val periodDuration = periodEnd - periodStart
+        val prevPeriodStart = periodStart - periodDuration - 1L
+        val prevPeriodEnd = periodStart - 1L
+        val prevPeriodTransactions = transactions.filter { tx ->
+            tx.dateMillis in prevPeriodStart..prevPeriodEnd
         }
 
-        var totalIncome = 0.0
-        var totalExpense = 0.0
+        // Calculate totals
+        val totalIncome = periodTransactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount }
+        val totalExpense = periodTransactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }
+        val prevIncome = prevPeriodTransactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount }
+        val prevExpense = prevPeriodTransactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }
+
+        val incomeChangePercent = if (prevIncome > 0.0) ((totalIncome - prevIncome) / prevIncome * 100.0) else 0.0
+        val expenseChangePercent = if (prevExpense > 0.0) ((totalExpense - prevExpense) / prevExpense * 100.0) else 0.0
+
+        // Category breakdown for donut
         val categoryExpenses = mutableMapOf<String, Double>()
         val categoryIcons = mutableMapOf<String, String>()
-
-        periodTransactions.forEach { tx ->
-            when (tx.type) {
-                TransactionType.INCOME -> totalIncome += tx.amount
-                TransactionType.EXPENSE -> {
-                    totalExpense += tx.amount
-                    categoryExpenses[tx.categoryName] = (categoryExpenses[tx.categoryName] ?: 0.0) + tx.amount
-                    categoryIcons[tx.categoryName] = tx.categoryIcon
-                }
-                TransactionType.TRANSFER -> { /* Internal pocket transfer */ }
-            }
+        periodTransactions.filter { it.type == TransactionType.EXPENSE }.forEach { tx ->
+            categoryExpenses[tx.categoryName] = (categoryExpenses[tx.categoryName] ?: 0.0) + tx.amount
+            categoryIcons[tx.categoryName] = tx.categoryIcon
         }
 
-        val netCashflow = totalIncome - totalExpense
-        val savingsRatePercentage = if (totalIncome > 0) {
-            ((netCashflow / totalIncome) * 100).toInt().coerceIn(0, 100)
-        } else 0
-
-        // Calculate Category Breakdown
         val categoryBreakdown = categoryExpenses.map { (name, amount) ->
-            val pct = if (totalExpense > 0) (amount / totalExpense).toFloat() else 0f
+            val pct = if (totalExpense > 0.0) (amount / totalExpense).toFloat() else 0f
             CategoryExpenseSummary(
                 categoryName = name,
                 categoryIcon = categoryIcons[name] ?: "category",
@@ -336,9 +389,9 @@ class ReportViewModel(
             )
         }.sortedByDescending { it.totalAmount }
 
-        // Build Donut Segments (Top 4 individual + Lainnya if > 4)
+        // Donut segments (Top 5 + Lainnya)
         val donutSegments = mutableListOf<DonutCategorySegment>()
-        if (categoryBreakdown.size <= 4) {
+        if (categoryBreakdown.size <= 5) {
             categoryBreakdown.forEachIndexed { index, cat ->
                 val color = CATEGORY_CHART_COLORS.getOrElse(index) { "#133E35" }
                 donutSegments.add(
@@ -353,8 +406,8 @@ class ReportViewModel(
                 )
             }
         } else {
-            val top4 = categoryBreakdown.take(4)
-            top4.forEachIndexed { index, cat ->
+            val top5 = categoryBreakdown.take(5)
+            top5.forEachIndexed { index, cat ->
                 val color = CATEGORY_CHART_COLORS.getOrElse(index) { "#133E35" }
                 donutSegments.add(
                     DonutCategorySegment(
@@ -367,9 +420,9 @@ class ReportViewModel(
                     )
                 )
             }
-            val others = categoryBreakdown.drop(4)
+            val others = categoryBreakdown.drop(5)
             val othersTotal = others.sumOf { it.totalAmount }
-            val othersPct = if (totalExpense > 0) (othersTotal / totalExpense).toFloat() else 0f
+            val othersPct = if (totalExpense > 0.0) (othersTotal / totalExpense).toFloat() else 0f
             donutSegments.add(
                 DonutCategorySegment(
                     categoryName = "Lainnya",
@@ -382,140 +435,303 @@ class ReportViewModel(
             )
         }
 
-        // Calculate Monthly Cashflows for Trend Charts (Bar & Savings Rate)
-        val monthlyCashflows = trendMonths.map { (yr, mo) ->
-            val monthTx = transactions.filter { isTransactionInMonth(it.dateMillis, yr, mo) }
-            var moIncome = 0.0
-            var moExpense = 0.0
-            monthTx.forEach { tx ->
-                when (tx.type) {
-                    TransactionType.INCOME -> moIncome += tx.amount
-                    TransactionType.EXPENSE -> moExpense += tx.amount
-                    TransactionType.TRANSFER -> {}
-                }
-            }
-            val moNet = moIncome - moExpense
-            val moRate = if (moIncome > 0) ((moNet / moIncome) * 100).toInt().coerceIn(0, 100) else 0
+        // Cashflow line chart data points
+        val cashflowPoints = buildCashflowPoints(transactions, periodStart, periodEnd)
 
-            MonthlyCashflow(
-                monthLabel = formatShortMonth(mo),
-                fullMonthLabel = formatMonthYear(mo, yr),
-                year = yr,
-                monthIndex = mo,
-                income = moIncome,
-                expense = moExpense,
-                net = moNet,
-                savingsRate = moRate
-            )
-        }
+        // Balance trend - reconstruct from current balances + transaction history
+        val balancePoints = buildBalancePoints(transactions, assets, periodStart, periodEnd)
 
-        // Generate Financial Insights from actual data
-        val insights = generateFinancialInsights(
-            savingsRate = savingsRatePercentage,
-            netCashflow = netCashflow,
-            totalExpense = totalExpense,
-            donutSegments = donutSegments,
-            monthlyCashflows = monthlyCashflows
-        )
+        // Top transactions
+        val topTransactions = getTopTransactions(transactions, periodStart, periodEnd, topFilter, typeFilter)
 
         return ReportUiState(
             period = period,
-            customMonthOffset = customOffset,
+            customStartMillis = customStartMillis,
+            customEndMillis = customEndMillis,
             periodTitle = periodTitle,
-            chartSummaryTitle = chartSummaryTitle,
-            totalAssetBalance = totalBalance,
-            totalPlannedAllocation = 0.0,
+            totalAssetBalance = assets.sumOf { it.balance },
             totalIncome = totalIncome,
             totalExpense = totalExpense,
-            netCashflow = netCashflow,
-            savingsRatePercentage = savingsRatePercentage,
-            transactionCount = periodTransactions.size,
-            monthlyCashflows = monthlyCashflows,
-            categoryBreakdown = categoryBreakdown,
+            incomeChangePercent = incomeChangePercent,
+            expenseChangePercent = expenseChangePercent,
+            cashflowPoints = cashflowPoints,
             donutSegments = donutSegments,
-            selectedCategoryName = selectedCategory,
-            selectedMonthIndex = selectedMonth,
-            insights = insights
+            categoryBreakdown = categoryBreakdown,
+            balancePoints = balancePoints,
+            topTransactions = topTransactions,
+            topTransactionFilter = topFilter,
+            transactionTypeFilter = typeFilter,
+            isLoading = false,
+            hasData = periodTransactions.isNotEmpty()
         )
     }
 
-    private fun generateFinancialInsights(
-        savingsRate: Int,
-        netCashflow: Double,
-        totalExpense: Double,
-        donutSegments: List<DonutCategorySegment>,
-        monthlyCashflows: List<MonthlyCashflow>
-    ): FinancialInsights {
-        // 1. Savings Rate Insight
-        val savingsInsight = when {
-            savingsRate >= 20 ->
-                "Rasio tabungan Anda mencapai $savingsRate%, melampaui standar anjuran 20%. Disiplin finansial berada di jalur yang sangat sehat."
-            savingsRate > 0 ->
-                "Rasio tabungan saat ini $savingsRate% (di bawah target ideal 20%). Batasi pos keinginan untuk meningkatkan porsi tabungan."
-            else ->
-                "Arus kas periode ini belum memiliki simpanan bersih (surplus 0% atau defisit). Perlu evaluasi menyeluruh terhadap pos pengeluaran."
-        }
+    // ============================================================
+    // Cashflow Points Builder (Line Chart)
+    // Granularity: daily for ≤31 days, weekly for >31 days
+    // ============================================================
+    private fun buildCashflowPoints(
+        transactions: List<Transaction>,
+        periodStart: Long,
+        periodEnd: Long
+    ): List<CashflowPoint> {
+        val periodDays = (periodEnd - periodStart) / (1000L * 60 * 60 * 24)
+        val isDaily = periodDays <= 31
 
-        // 2. Top Category Insight
-        val topCategoryInsight = if (donutSegments.isNotEmpty() && totalExpense > 0) {
-            val top = donutSegments.first()
-            val pctStr = (top.percentage * 100).toInt()
-            "Pos belanja terbesar adalah ${top.categoryName} sebesar ${Formatters.formatRupiah(top.amount)} ($pctStr% dari total pengeluaran)."
-        } else null
+        val cal = Calendar.getInstance()
+        val points = mutableListOf<CashflowPoint>()
 
-        // 3. Cashflow Trend Insight (comparing last 2 months if available)
-        val cashflowTrendInsight = if (monthlyCashflows.size >= 2) {
-            val current = monthlyCashflows.last()
-            val prev = monthlyCashflows[monthlyCashflows.size - 2]
-            val diff = current.expense - prev.expense
-            when {
-                diff < -50000 -> "Pengeluaran bulan ini lebih hemat ${Formatters.formatRupiah(-diff)} dibanding bulan sebelumnya."
-                diff > 50000 -> "Pengeluaran meningkat ${Formatters.formatRupiah(diff)} dibanding bulan sebelumnya."
-                else -> "Pengeluaran relatif stabil dibanding bulan sebelumnya."
+        if (isDaily) {
+            // Daily points
+            var current = periodStart
+            while (current <= periodEnd) {
+                cal.timeInMillis = current
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                val dayStart = cal.timeInMillis
+                cal.set(Calendar.HOUR_OF_DAY, 23)
+                cal.set(Calendar.MINUTE, 59)
+                cal.set(Calendar.SECOND, 59)
+                cal.set(Calendar.MILLISECOND, 999)
+                val dayEnd = cal.timeInMillis
+
+                val dayTx = transactions.filter { it.dateMillis in dayStart..dayEnd }
+                var income = 0.0
+                var expense = 0.0
+                dayTx.forEach { tx ->
+                    when (tx.type) {
+                        TransactionType.INCOME -> income += tx.amount
+                        TransactionType.EXPENSE -> expense += tx.amount
+                        TransactionType.TRANSFER -> {}
+                    }
+                }
+                points.add(
+                    CashflowPoint(
+                        label = Formatters.formatShortDateIndo(dayStart),
+                        dateMillis = dayStart,
+                        income = income,
+                        expense = expense
+                    )
+                )
+                current += 24L * 60 * 60 * 1000
             }
-        } else null
-
-        // 4. Recommendation
-        val recommendation = if (netCashflow > 0) {
-            "Surplus bersih sebesar ${Formatters.formatRupiah(netCashflow)} siap dialokasikan ke Kantong Tabungan atau Dana Darurat."
         } else {
-            "Disarankan menyusun batas anggaran harian agar arus kas kembali seimbang dan surplus."
+            // Weekly points
+            var current = periodStart
+            while (current <= periodEnd) {
+                cal.timeInMillis = current
+                cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                val weekStart = max(cal.timeInMillis, periodStart)
+                cal.add(Calendar.DAY_OF_WEEK, 6)
+                cal.set(Calendar.HOUR_OF_DAY, 23)
+                cal.set(Calendar.MINUTE, 59)
+                cal.set(Calendar.SECOND, 59)
+                cal.set(Calendar.MILLISECOND, 999)
+                val weekEnd = min(cal.timeInMillis, periodEnd)
+
+                val weekTx = transactions.filter { it.dateMillis in weekStart..weekEnd }
+                var income = 0.0
+                var expense = 0.0
+                weekTx.forEach { tx ->
+                    when (tx.type) {
+                        TransactionType.INCOME -> income += tx.amount
+                        TransactionType.EXPENSE -> expense += tx.amount
+                        TransactionType.TRANSFER -> {}
+                    }
+                }
+                points.add(
+                    CashflowPoint(
+                        label = "${Formatters.formatShortDateIndo(weekStart)} - ${Formatters.formatShortDateIndo(weekEnd)}",
+                        dateMillis = weekStart,
+                        income = income,
+                        expense = expense
+                    )
+                )
+                current = weekEnd + 1L
+            }
         }
 
-        return FinancialInsights(
-            savingsInsight = savingsInsight,
-            topCategoryInsight = topCategoryInsight,
-            cashflowTrendInsight = cashflowTrendInsight,
-            recommendation = recommendation,
-            isSurplus = netCashflow >= 0
-        )
+        return points
     }
 
-    private fun isTransactionInMonth(dateMillis: Long, year: Int, month: Int): Boolean {
+    // ============================================================
+    // Balance Points Builder (Balance Trend Line Chart)
+    // Reconstructs balance history by replaying transactions backwards
+    // from current asset balances
+    // ============================================================
+    private fun buildBalancePoints(
+        transactions: List<Transaction>,
+        assets: List<Asset>,
+        periodStart: Long,
+        periodEnd: Long
+    ): List<BalancePoint> {
+        val currentTotalBalance = assets.sumOf { it.balance }
+
+        val allTxSorted = transactions.filter { it.type != TransactionType.TRANSFER }
+            .sortedBy { it.dateMillis }
+
+        val periodDays = (periodEnd - periodStart) / (1000L * 60 * 60 * 24)
+        val isDaily = periodDays <= 31
+
+        val dailyNetChange = mutableMapOf<Long, Double>()
+        allTxSorted.forEach { tx ->
+            if (tx.dateMillis <= periodEnd) {
+                val cal = Calendar.getInstance()
+                cal.timeInMillis = tx.dateMillis
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                val dayKey = cal.timeInMillis
+                val change = when (tx.type) {
+                    TransactionType.INCOME -> tx.amount
+                    TransactionType.EXPENSE -> -tx.amount
+                    TransactionType.TRANSFER -> 0.0
+                }
+                dailyNetChange[dayKey] = (dailyNetChange[dayKey] ?: 0.0) + change
+            }
+        }
+
+        var balanceAtPeriodEnd = currentTotalBalance
+        allTxSorted.filter { it.dateMillis > periodEnd }.forEach { tx ->
+            val change = when (tx.type) {
+                TransactionType.INCOME -> tx.amount
+                TransactionType.EXPENSE -> -tx.amount
+                TransactionType.TRANSFER -> 0.0
+            }
+            balanceAtPeriodEnd -= change
+        }
+
+        val points = mutableListOf<BalancePoint>()
+        var runningBalance = balanceAtPeriodEnd
+
         val cal = Calendar.getInstance()
-        cal.timeInMillis = dateMillis
-        return cal.get(Calendar.YEAR) == year && cal.get(Calendar.MONTH) == month
+        val format = if (isDaily) {
+            { d: Long -> Formatters.formatShortDateIndo(d) }
+        } else {
+            { d: Long ->
+                cal.timeInMillis = d
+                cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                val ws = cal.timeInMillis
+                cal.add(Calendar.DAY_OF_WEEK, 6)
+                cal.set(Calendar.HOUR_OF_DAY, 23)
+                cal.set(Calendar.MINUTE, 59)
+                cal.set(Calendar.SECOND, 59)
+                cal.set(Calendar.MILLISECOND, 999)
+                val we = min(cal.timeInMillis, periodEnd)
+                "${Formatters.formatShortDateIndo(ws)} - ${Formatters.formatShortDateIndo(we)}"
+            }
+        }
+
+        if (isDaily) {
+            var current = periodEnd
+            while (current >= periodStart) {
+                cal.timeInMillis = current
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                val dayKey = cal.timeInMillis
+
+                points.add(
+                    0,
+                    BalancePoint(
+                        label = format(dayKey),
+                        dateMillis = dayKey,
+                        balance = runningBalance
+                    )
+                )
+
+                val dayChange = dailyNetChange[dayKey] ?: 0.0
+                runningBalance -= dayChange
+
+                current -= 24L * 60 * 60 * 1000
+            }
+        } else {
+            var current = periodEnd
+            while (current >= periodStart) {
+                cal.timeInMillis = current
+                cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                val weekStart = max(cal.timeInMillis, periodStart)
+                val weekEnd = current
+
+                var weekChange = 0.0
+                var checkDay = weekStart
+                while (checkDay <= weekEnd) {
+                    weekChange += dailyNetChange[checkDay] ?: 0.0
+                    checkDay += 24L * 60 * 60 * 1000
+                }
+
+                points.add(
+                    0,
+                    BalancePoint(
+                        label = format(weekStart),
+                        dateMillis = weekStart,
+                        balance = runningBalance
+                    )
+                )
+
+                runningBalance -= weekChange
+                current = weekStart - 1L
+            }
+        }
+
+        return points
     }
 
-    private fun isTransactionInMonths(dateMillis: Long, months: List<Pair<Int, Int>>): Boolean {
-        val cal = Calendar.getInstance()
-        cal.timeInMillis = dateMillis
-        val y = cal.get(Calendar.YEAR)
-        val m = cal.get(Calendar.MONTH)
-        return months.any { it.first == y && it.second == m }
-    }
+    // ============================================================
+    // Top Transactions
+    // ============================================================
+    private fun getTopTransactions(
+        transactions: List<Transaction>,
+        periodStart: Long,
+        periodEnd: Long,
+        topFilter: TopTransactionFilter,
+        typeFilter: TransactionTypeFilter
+    ): List<TopTransactionItem> {
+        var filtered = transactions.filter { tx ->
+            tx.dateMillis in periodStart..periodEnd
+        }
 
-    private fun formatMonthYear(month: Int, year: Int): String {
-        val names = arrayOf(
-            "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-            "Juli", "Agustus", "September", "Oktober", "November", "Desember"
-        )
-        val name = if (month in names.indices) names[month] else "Bulan"
-        return "$name $year"
-    }
+        when (typeFilter) {
+            TransactionTypeFilter.INCOME -> filtered = filtered.filter { it.type == TransactionType.INCOME }
+            TransactionTypeFilter.EXPENSE -> filtered = filtered.filter { it.type == TransactionType.EXPENSE }
+            TransactionTypeFilter.ALL -> {}
+        }
 
-    private fun formatShortMonth(month: Int): String {
-        val names = arrayOf("Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des")
-        return if (month in names.indices) names[month] else "Bln"
+        val limit = when (topFilter) {
+            TopTransactionFilter.TOP_5 -> 5
+            TopTransactionFilter.TOP_10 -> 10
+            TopTransactionFilter.TOP_20 -> 20
+        }
+
+        return filtered
+            .sortedByDescending { it.amount }
+            .take(limit)
+            .map { tx ->
+                TopTransactionItem(
+                    id = tx.id,
+                    title = tx.title,
+                    categoryName = tx.categoryName,
+                    categoryIcon = tx.categoryIcon,
+                    dateMillis = tx.dateMillis,
+                    amount = tx.amount,
+                    type = tx.type
+                )
+            }
     }
 }

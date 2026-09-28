@@ -53,7 +53,9 @@ class SakuReceiptScanningTest {
             Pocket("p1", "Kantong Utama", targetAmount = 500000.0, color = "#2E7D32", icon = "wallet")
         )
         
-        private val sampleAssets = mutableListOf<Asset>()
+        private val sampleAssets = mutableListOf<Asset>(
+            Asset("a1", "Dompet Utama", 1000000.0, com.example.domain.model.AssetType.CASH, "wallet", "#2E7D32", false)
+        )
         private val sampleExpenseAllocations = mutableListOf<com.example.domain.model.ExpenseAllocation>()
 
         override fun getUser(): Flow<User?> = flowOf(null)
@@ -79,6 +81,9 @@ class SakuReceiptScanningTest {
         override suspend fun deleteTransaction(transactionId: String) {
             insertedTransactions.removeAll { it.id == transactionId }
         }
+
+        override fun getTransactionsBetween(startMillis: Long, endMillis: Long): Flow<List<Transaction>> =
+            flowOf(insertedTransactions.filter { it.dateMillis in startMillis..endMillis })
 
         override fun getFinancialSummary(): Flow<FinancialSummary> =
             flowOf(FinancialSummary(

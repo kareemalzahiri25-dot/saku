@@ -205,6 +205,15 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE dateMillis >= :startMillis AND dateMillis <= :endMillis ORDER BY dateMillis DESC")
     fun getTransactionsBetween(startMillis: Long, endMillis: Long): Flow<List<TransactionEntity>>
 
+    @Query("SELECT * FROM transactions WHERE dateMillis >= :startMillis AND dateMillis <= :endMillis ORDER BY dateMillis DESC")
+    suspend fun getTransactionsInRangeSync(startMillis: Long, endMillis: Long): List<TransactionEntity>
+
+    @Query("SELECT * FROM transactions WHERE dateMillis >= :startMillis AND dateMillis <= :endMillis AND typeString = :type ORDER BY amount DESC LIMIT :limit")
+    suspend fun getTopTransactionsByTypeInRange(startMillis: Long, endMillis: Long, type: String, limit: Int): List<TransactionEntity>
+
+    @Query("SELECT * FROM transactions WHERE dateMillis >= :startMillis AND dateMillis <= :endMillis ORDER BY amount DESC LIMIT :limit")
+    suspend fun getTopTransactionsInRange(startMillis: Long, endMillis: Long, limit: Int): List<TransactionEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTransaction(transaction: TransactionEntity)
 

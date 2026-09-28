@@ -150,7 +150,10 @@ fun SakuNavHost(
 
             composable(Screen.Laporan.route) {
                 val reportVm = viewModel { ReportViewModel(container.repository) }
-                ReportScreen(viewModel = reportVm)
+                ReportScreen(
+                    viewModel = reportVm,
+                    onNavigateToExport = { navController.navigate(Screen.ExportBackup.route) }
+                )
             }
 
             composable(Screen.Profil.route) {

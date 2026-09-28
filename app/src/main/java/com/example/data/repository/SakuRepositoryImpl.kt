@@ -220,6 +220,10 @@ class SakuRepositoryImpl(
         return transactionDao.getTransactionsByAsset(assetId).map { list -> list.map { it.toDomain() } }
     }
 
+    override fun getTransactionsBetween(startMillis: Long, endMillis: Long): Flow<List<Transaction>> {
+        return transactionDao.getTransactionsBetween(startMillis, endMillis).map { list -> list.map { it.toDomain() } }
+    }
+
     override suspend fun getTransactionById(id: String): Transaction? = withContext(Dispatchers.IO) {
         transactionDao.getTransactionById(id)?.toDomain()
     }
