@@ -195,6 +195,16 @@ class SakuRepositoryImpl(
         pocketAllocationDao.deleteAllocationById(allocationId)
     }
 
+    override suspend fun replacePocketAllocations(
+        pocketId: String,
+        allocations: List<PocketAllocation>
+    ) = withContext(Dispatchers.IO) {
+        database.withTransaction {
+            pocketAllocationDao.deleteAllocationsByPocket(pocketId)
+            pocketAllocationDao.insertAllocations(allocations.map { PocketAllocationEntity.fromDomain(it) })
+        }
+    }
+
     // --- Category Operations ---
 
     override fun getAllCategories(): Flow<List<Category>> {

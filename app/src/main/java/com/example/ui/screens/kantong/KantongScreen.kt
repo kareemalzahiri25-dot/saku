@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -97,6 +98,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import java.time.LocalDate
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.core.Formatters
 import com.example.domain.model.Asset
@@ -306,6 +308,8 @@ fun KantongScreen(
     val assets by viewModel.assets.collectAsStateWithLifecycle()
     val activeAssets by viewModel.activeAssets.collectAsStateWithLifecycle()
     val totalAssetBalance by viewModel.totalAssetBalance.collectAsStateWithLifecycle()
+    val assetPlanning by viewModel.assetPlanning.collectAsStateWithLifecycle()
+    val overPlannedAssets by viewModel.overPlannedAssets.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     val totalAllocated = pocketStats.sumOf { it.realization }
@@ -847,6 +851,29 @@ fun KantongScreen(
                     }
                 }
 
+                // Banner Over-Planning
+                item {
+                    if (uiState.selectedTab == SakuPageTab.ASET && overPlannedAssets.isNotEmpty()) {
+                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            overPlannedAssets.forEach { (asset, planned) ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = SakuExpenseRed.copy(alpha = 0.1f),
+                                    border = BorderStroke(1.dp, SakuExpenseRed.copy(alpha = 0.3f)),
+                                    modifier = Modifier.fillMaxWidth().testTag("over_planning_banner_${asset.id}")
+                                ) {
+                                    Text(
+                                        text = "⚠️ Perhatian: Saldo ${asset.name} (${Formatters.formatRupiah(asset.balance)}) kurang dari total alokasi (${Formatters.formatRupiah(planned)}). Review kantong atau tambah saldo.",
+                                        color = SakuExpenseRed,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                        modifier = Modifier.padding(12.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Content: 2-Column Compact Grid OR Detailed List Cards for Assets
                 if (uiState.assetViewMode == AssetViewMode.GRID) {
                     val chunkedAssets = assets.chunked(2)
@@ -857,15 +884,19 @@ fun KantongScreen(
                         ) {
                             AssetCompactGridCard(
                                 asset = rowAssets[0],
+                                planning = assetPlanning[rowAssets[0].id] ?: 0.0,
                                 modifier = Modifier.weight(1f),
-                                onEdit = { viewModel.openEditAssetDialog(rowAssets[0]) }
+                                onEdit = { viewModel.openEditAssetDialog(rowAssets[0]) },
+                                onTransfer = { viewModel.openTransferSheet(rowAssets[0]) }
                             )
 
                             if (rowAssets.size > 1) {
                                 AssetCompactGridCard(
                                     asset = rowAssets[1],
+                                    planning = assetPlanning[rowAssets[1].id] ?: 0.0,
                                     modifier = Modifier.weight(1f),
-                                    onEdit = { viewModel.openEditAssetDialog(rowAssets[1]) }
+                                    onEdit = { viewModel.openEditAssetDialog(rowAssets[1]) },
+                                    onTransfer = { viewModel.openTransferSheet(rowAssets[1]) }
                                 )
                             } else {
                                 Spacer(modifier = Modifier.weight(1f))
@@ -876,8 +907,10 @@ fun KantongScreen(
                     items(assets) { asset ->
                         AssetDetailedCard(
                             asset = asset,
+                            planning = assetPlanning[asset.id] ?: 0.0,
                             onEdit = { viewModel.openEditAssetDialog(asset) },
-                            onDelete = { viewModel.deleteAsset(asset.id) }
+                            onDelete = { viewModel.deleteAsset(asset.id) },
+                            onTransfer = { viewModel.openTransferSheet(asset) }
                         )
                     }
                 }
@@ -903,6 +936,7 @@ fun KantongScreen(
         if (uiState.isEditPocketDialogOpen) {
             EditKantongModal(
                 uiState = uiState,
+                assets = assets,
                 onDismiss = { viewModel.closeEditPocketDialog() },
                 onNameChange = { viewModel.onEditPocketNameChange(it) },
                 onTypeChange = { viewModel.onEditPocketTypeChange(it) },
@@ -910,6 +944,11 @@ fun KantongScreen(
                 onColorChange = { viewModel.onEditPocketColorChange(it) },
                 onIconChange = { viewModel.onEditPocketIconChange(it) },
                 onDescriptionChange = { viewModel.onEditPocketDescriptionChange(it) },
+                onAllocAdd = { viewModel.addEditPocketAllocation(it) },
+                onAllocRemove = { viewModel.removeEditPocketAllocation(it) },
+                onAllocNominalChange = { idx, value -> viewModel.onEditPocketAllocationNominalChange(idx, value) },
+                onConfirmClearAlloc = { viewModel.saveEditPocket(confirmedClear = true) },
+                onCancelClearAlloc = { viewModel.cancelClearPocketAllocations() },
                 onSave = { viewModel.saveEditPocket() }
             )
         }
@@ -939,6 +978,20 @@ fun KantongScreen(
                 onColorChange = { viewModel.onEditAssetColorChange(it) },
                 onIconChange = { viewModel.onEditAssetIconChange(it) },
                 onSave = { viewModel.saveEditAsset() }
+            )
+        }
+
+        // Bottom Sheet: Transfer Dana
+        if (uiState.isTransferSheetOpen) {
+            TransferSheet(
+                uiState = uiState,
+                assets = assets,
+                onDismiss = { viewModel.closeTransferSheet() },
+                onTargetAssetChange = { viewModel.onTransferTargetAssetChange(it) },
+                onAmountChange = { viewModel.onTransferAmountChange(it) },
+                onDateChange = { viewModel.onTransferDateChange(it) },
+                onNoteChange = { viewModel.onTransferNoteChange(it) },
+                onSave = { viewModel.saveTransfer() }
             )
         }
 
@@ -1742,12 +1795,16 @@ private fun androidx.compose.foundation.layout.RowScope.SakuTabOptionButton(
 @Composable
 fun AssetCompactGridCard(
     asset: Asset,
+    planning: Double,
     modifier: Modifier = Modifier,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onTransfer: () -> Unit
 ) {
     val assetColor = parsePocketColor(asset.colorHex)
     val iconVector = getAssetIconVector(asset.iconName, asset.type)
     val typeLabel = getAssetTypeLabel(asset.type)
+    val available = asset.balance - planning
+    val isOver = available < 0
 
     Card(
         modifier = modifier
@@ -1763,7 +1820,7 @@ fun AssetCompactGridCard(
                 .fillMaxWidth()
                 .padding(14.dp)
         ) {
-            // Top Row: Icon + Type Badge + Edit action
+            // Top Row: Icon + Type Badge + Edit action + Transfer action
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1798,6 +1855,23 @@ fun AssetCompactGridCard(
                                 fontSize = 9.sp
                             ),
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // Transfer Button
+                    IconButton(
+                        onClick = onTransfer,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .testTag("transfer_asset_btn_${asset.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SwapHoriz,
+                            contentDescription = "Transfer Dana",
+                            tint = SakuDarkGreen,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
@@ -1847,6 +1921,30 @@ fun AssetCompactGridCard(
                 overflow = TextOverflow.Ellipsis
             )
 
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Planning & Available
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Terplanning ${Formatters.formatRupiah(planning)}",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        color = SakuTextSecondary,
+                        fontSize = 10.5.sp
+                    )
+                )
+                Text(
+                    text = "Tersedia ${Formatters.formatRupiah(available)}",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        color = if (isOver) SakuExpenseRed else SakuDarkGreen,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.5.sp
+                    )
+                )
+            }
+
             Spacer(modifier = Modifier.height(10.dp))
 
             // Divider line
@@ -1864,12 +1962,16 @@ fun AssetCompactGridCard(
 @Composable
 fun AssetDetailedCard(
     asset: Asset,
+    planning: Double,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onTransfer: () -> Unit
 ) {
     val assetColor = parsePocketColor(asset.colorHex)
     val iconVector = getAssetIconVector(asset.iconName, asset.type)
     val typeLabel = getAssetTypeLabel(asset.type)
+    val available = asset.balance - planning
+    val isOver = available < 0
 
     Card(
         modifier = Modifier
@@ -1933,6 +2035,17 @@ fun AssetDetailedCard(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
+                        onClick = onTransfer,
+                        modifier = Modifier.testTag("transfer_asset_btn_${asset.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SwapHoriz,
+                            contentDescription = "Transfer Dana",
+                            tint = SakuDarkGreen,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    IconButton(
                         onClick = onEdit,
                         modifier = Modifier.testTag("edit_asset_btn_${asset.id}")
                     ) {
@@ -1959,30 +2072,55 @@ fun AssetDetailedCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Column {
-                    Text(
-                        text = "Saldo Saat Ini",
-                        style = MaterialTheme.typography.labelSmall.copy(color = SakuTextSecondary)
-                    )
-                    Text(
-                        text = Formatters.formatRupiah(asset.balance),
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = SakuDarkGreen
-                        )
-                    )
+                        // Planning & Available row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            Text(
+                                text = "Terplanning ${Formatters.formatRupiah(planning)}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = SakuTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            )
+                            Text(
+                                text = "Tersedia ${Formatters.formatRupiah(available)}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = if (isOver) SakuExpenseRed else SakuDarkGreen,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Saldo Saat Ini",
+                                    style = MaterialTheme.typography.labelSmall.copy(color = SakuTextSecondary)
+                                )
+                                Text(
+                                    text = Formatters.formatRupiah(asset.balance),
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = SakuDarkGreen
+                                    )
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
                 }
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
-        }
-    }
-}
 
 // ==================== BUAT ASET MODAL ====================
 @Composable
@@ -2684,6 +2822,7 @@ fun EditAsetModal(
 @Composable
 fun EditKantongModal(
     uiState: KantongUiState,
+    assets: List<Asset>,
     onDismiss: () -> Unit,
     onNameChange: (String) -> Unit,
     onTypeChange: (String) -> Unit,
@@ -2691,6 +2830,11 @@ fun EditKantongModal(
     onColorChange: (String) -> Unit,
     onIconChange: (String) -> Unit,
     onDescriptionChange: (String) -> Unit,
+    onAllocAdd: (String) -> Unit,
+    onAllocRemove: (Int) -> Unit,
+    onAllocNominalChange: (Int, String) -> Unit,
+    onConfirmClearAlloc: () -> Unit,
+    onCancelClearAlloc: () -> Unit,
     onSave: () -> Unit
 ) {
     Dialog(
@@ -3063,6 +3207,234 @@ fun EditKantongModal(
                             )
                         }
 
+                        // 8. Ambil dari Aset (Multi-Aset Planning)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Ambil dari Aset",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = SakuDarkGreen
+                                    )
+                                )
+                                Text(
+                                    text = "Alokasikan nominal dari beberapa aset",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = SakuTextSecondary,
+                                        fontSize = 11.5.sp
+                                    )
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Existing allocations list
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                itemsIndexed(uiState.editingPocketAllocations) { index, alloc ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                                            .background(SakuCreamSurface, RoundedCornerShape(12.dp))
+                                            .border(BorderStroke(1.dp, SakuCreamBorder), RoundedCornerShape(12.dp))
+                                    ) {
+                                        // Asset badge/icon
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(
+                                                    parsePocketColor(alloc.assetName.hashCode().toString()).copy(alpha = 0.14f)
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = getAssetIconVector(alloc.icon, AssetType.BANK),
+                                                contentDescription = alloc.assetName,
+                                                tint = parsePocketColor(alloc.assetName.hashCode().toString()),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+
+                                        // Asset name + nominal input
+                                        Column(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .padding(vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = alloc.assetName,
+                                                style = MaterialTheme.typography.labelMedium.copy(
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = SakuTextPrimary
+                                                ),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            OutlinedTextField(
+                                                value = alloc.nominalStr,
+                                                onValueChange = { onAllocNominalChange(index, it) },
+                                                placeholder = { Text("0") },
+                                                prefix = { Text(text = "Rp ", color = SakuDarkGreen, fontWeight = FontWeight.Bold) },
+                                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                singleLine = true,
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedContainerColor = SakuCreamSurface,
+                                                    unfocusedContainerColor = SakuCreamSurface,
+                                                    focusedBorderColor = SakuDarkGreen,
+                                                    unfocusedBorderColor = SakuCreamBorder
+                                                ),
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+
+                                        // Delete button
+                                        IconButton(
+                                            onClick = { onAllocRemove(index) },
+                                            modifier = Modifier.padding(start = 8.dp, end = 4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Hapus alokasi",
+                                                tint = SakuExpenseRed,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // + Tambah Aset button
+                            val availableAssets = assets.filter { asset ->
+                                uiState.editingPocketAllocations.none { it.assetId == asset.id }
+                            }
+                            if (availableAssets.isNotEmpty()) {
+                                OutlinedButton(
+                                    onClick = {
+                                        availableAssets.firstOrNull()?.let { asset ->
+                                            onAllocAdd(asset.id)
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.5.dp, SakuDarkGreen),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = SakuDarkGreen
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = null,
+                                            tint = SakuDarkGreen,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "+ Tambah Aset",
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = SakuDarkGreen
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Total allocation summary
+                            val totalAllocated = uiState.editingPocketAllocations
+                                .sumOf { Formatters.parseAmount(it.nominalStr.trim()).coerceAtLeast(0.0) }
+                            if (totalAllocated > 0) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Total Alokasi",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = SakuTextPrimary
+                                        )
+                                    )
+                                    Text(
+                                        text = Formatters.formatRupiah(totalAllocated),
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = SakuDarkGreen
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        // Clear allocation confirmation
+                        if (uiState.isClearAllocConfirmOpen) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                color = SakuExpenseRed.copy(alpha = 0.1f),
+                                border = BorderStroke(1.dp, SakuExpenseRed.copy(alpha = 0.3f))
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "Hapus semua alokasi kantong ini?",
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = SakuExpenseRed
+                                        )
+                                    )
+                                    Text(
+                                        text = "Semua alokasi aset akan dihapus. Tindakan ini tidak dapat dibatalkan.",
+                                        style = MaterialTheme.typography.bodySmall.copy(color = SakuTextSecondary)
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = onCancelClearAlloc,
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Text("Batal", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                                        }
+                                        Button(
+                                            onClick = onConfirmClearAlloc,
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = SakuExpenseRed)
+                                        ) {
+                                            Text("Hapus Semua", style = MaterialTheme.typography.labelMedium.copy(
+                                                fontWeight = FontWeight.Bold, color = Color.White))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // Error Banner
                         if (uiState.errorMessage != null) {
                             Surface(
@@ -3130,6 +3502,93 @@ fun EditKantongModal(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+// ==================== TRANSFER SHEET ====================
+@Composable
+fun TransferSheet(
+    uiState: KantongUiState,
+    assets: List<Asset>,
+    onDismiss: () -> Unit,
+    onTargetAssetChange: (String) -> Unit,
+    onAmountChange: (String) -> Unit,
+    onDateChange: (LocalDate) -> Unit,
+    onNoteChange: (String) -> Unit,
+    onSave: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fillMaxHeight(0.85f),
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        color = SakuCreamBackground
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text("Transfer Dana", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // From
+            Text("Dari: ${uiState.transferSourceAssetName}", style = MaterialTheme.typography.bodyMedium)
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // To dropdown
+            Text("Ke Aset", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+            val targetAssets = assets.filter { it.id != uiState.transferSourceAssetId }
+            if (targetAssets.isNotEmpty()) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    targetAssets.take(3).forEach { asset ->
+                        Button(onClick = { onTargetAssetChange(asset.id) },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (asset.id == uiState.transferTargetAssetId) SakuDarkGreen else SakuCreamSurface
+                            )
+                        ) {
+                            Text(asset.name.take(10), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Amount
+            Text("Nominal", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+            OutlinedTextField(
+                value = uiState.transferAmountString,
+                onValueChange = onAmountChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("0") },
+                prefix = { Text("Rp ", fontWeight = FontWeight.Bold) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+            if (uiState.transferWarning != null) {
+                Text(uiState.transferWarning!!, style = MaterialTheme.typography.bodySmall.copy(color = SakuExpenseRed), modifier = Modifier.padding(top = 4.dp))
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Note
+            OutlinedTextField(
+                value = uiState.transferNote,
+                onValueChange = onNoteChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Catatan (opsional)") }
+            )
+            
+            // Error
+            if (uiState.errorMessage != null) {
+                Text(uiState.errorMessage!!, style = MaterialTheme.typography.bodySmall.copy(color = SakuExpenseRed), modifier = Modifier.padding(top = 8.dp))
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                    Text("Batal")
+                }
+                Button(onClick = onSave, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = SakuDarkGreen)) {
+                    Text("Transfer")
                 }
             }
         }

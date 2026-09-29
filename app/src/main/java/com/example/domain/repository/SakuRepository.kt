@@ -40,6 +40,7 @@ interface SakuRepository {
     suspend fun insertPocketAllocation(allocation: PocketAllocation)
     suspend fun updatePocketAllocation(allocation: PocketAllocation)
     suspend fun deletePocketAllocation(allocationId: String)
+    suspend fun replacePocketAllocations(pocketId: String, allocations: List<PocketAllocation>)
 
     // Categories
     fun getAllCategories(): Flow<List<Category>>

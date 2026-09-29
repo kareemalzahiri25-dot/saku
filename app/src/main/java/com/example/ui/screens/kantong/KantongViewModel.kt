@@ -6,7 +6,10 @@ import com.example.core.Formatters
 import com.example.domain.model.Asset
 import com.example.domain.model.AssetType
 import com.example.domain.model.Pocket
+import com.example.domain.model.PocketAllocation
 import com.example.domain.model.PocketStats
+import com.example.domain.model.Transaction
+import com.example.domain.model.TransactionType
 import com.example.domain.repository.SakuRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,9 +17,13 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.ZoneId
+import java.util.UUID
 
 enum class KantongViewMode {
     GRID,
@@ -33,6 +40,14 @@ enum class SakuPageTab {
     ASET
 }
 
+data class PocketAllocationUIModel(
+    val id: String,
+    val assetId: String,
+    val assetName: String,
+    val icon: String,
+    val nominalStr: String
+)
+
 data class KantongUiState(
     // Tab Navigation
     val selectedTab: SakuPageTab = SakuPageTab.KANTONG,
@@ -48,7 +63,21 @@ data class KantongUiState(
     val editPocketType: String = "Tabungan",
     val editPocketColorHex: String = "#133E35",
     val editPocketIcon: String = "savings",
-    val newPocketName: String = "",
+    val editingPocketAllocations: List<PocketAllocationUIModel> = emptyList(),
+    val editingPocketHadAllocations: Boolean = false,
+    val isClearAllocConfirmOpen: Boolean = false,
+        // Transfer antar aset state
+        val isTransferSheetOpen: Boolean = false,
+        val transferSourceAssetId: String = "",
+        val transferSourceAssetName: String = "",
+        val transferTargetAssetId: String = "",
+        val transferTargetAssetName: String = "",
+        val transferAmountString: String = "",
+        val transferDate: LocalDate = LocalDate.now(),
+        val transferNote: String = "",
+        val transferWarning: String? = null,
+    
+        val newPocketName: String = "",
     val newPocketTarget: String = "",
     val newPocketDescription: String = "",
     val newPocketType: String = "Tabungan",
@@ -98,6 +127,23 @@ class KantongViewModel(
     val totalAssetBalance: StateFlow<Double> = repository.getActiveAssets()
         .map { list -> list.sumOf { it.balance } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    // Planning (pocket allocation) per asset: assetId -> total planned
+    val assetPlanning: StateFlow<Map<String, Double>> = repository.getPocketAllocations()
+        .map { list ->
+            list.groupBy { it.assetId }
+                .mapValues { (_, v) -> v.sumOf { it.allocatedAmount } }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    // Over-planned assets: those whose balance < total planning
+    val overPlannedAssets: StateFlow<List<Pair<Asset, Double>>> =
+        combine(assets, assetPlanning) { assetList, planning ->
+            assetList.mapNotNull { asset ->
+                val planned = planning[asset.id] ?: 0.0
+                if (asset.balance < planned - 0.0001) asset to planned else null
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun selectTab(tab: SakuPageTab) {
         _uiState.value = _uiState.value.copy(selectedTab = tab, errorMessage = null)
@@ -210,18 +256,37 @@ class KantongViewModel(
         val (type, note) = extractTypeAndNote(pocket.description)
         val stats = pocketStats.value.find { it.pocketId == pocket.id }
         val realization = stats?.realization ?: 0.0
-        _uiState.value = _uiState.value.copy(
-            isEditPocketDialogOpen = true,
-            editingPocketId = pocket.id,
-            editingPocketCurrentRealization = realization,
-            editPocketName = pocket.name,
-            editPocketTarget = if (pocket.targetAmount > 0) pocket.targetAmount.toLong().toString() else "",
-            editPocketDescription = note,
-            editPocketType = type,
-            editPocketColorHex = pocket.colorHex,
-            editPocketIcon = pocket.iconName,
-            errorMessage = null
-        )
+        viewModelScope.launch {
+            val existingAllocs = repository.getPocketAllocationsByPocket(pocket.id)
+                .map { allocs ->
+                    allocs.map { alloc ->
+                        val asset = repository.getAssetById(alloc.assetId)
+                        PocketAllocationUIModel(
+                            id = alloc.id,
+                            assetId = alloc.assetId,
+                            assetName = asset?.name ?: "Unknown",
+                            icon = asset?.iconName ?: "account_balance",
+                            nominalStr = alloc.allocatedAmount.toLong().toString()
+                        )
+                    }
+                }
+                .first() ?: emptyList()
+            
+            _uiState.value = _uiState.value.copy(
+                isEditPocketDialogOpen = true,
+                editingPocketId = pocket.id,
+                editingPocketCurrentRealization = realization,
+                editPocketName = pocket.name,
+                editPocketTarget = if (pocket.targetAmount > 0) pocket.targetAmount.toLong().toString() else "",
+                editPocketDescription = note,
+                editPocketType = type,
+                editPocketColorHex = pocket.colorHex,
+                editPocketIcon = pocket.iconName,
+                editingPocketAllocations = existingAllocs,
+                editingPocketHadAllocations = existingAllocs.isNotEmpty(),
+                errorMessage = null
+            )
+        }
     }
 
     fun closeEditPocketDialog() {
@@ -256,7 +321,59 @@ class KantongViewModel(
         _uiState.value = _uiState.value.copy(editPocketIcon = iconName)
     }
 
-    fun saveEditPocket(): Job? {
+    // --- Pocket Allocation Editing (multi-asset planning) ---
+
+    fun addEditPocketAllocation(assetId: String) {
+        val state = _uiState.value
+        if (state.editingPocketAllocations.any { it.assetId == assetId }) return
+        val asset = assets.value.find { it.id == assetId }
+        _uiState.value = state.copy(
+            editingPocketAllocations = state.editingPocketAllocations + PocketAllocationUIModel(
+                id = "alloc_${System.currentTimeMillis()}_${assetId}",
+                assetId = assetId,
+                assetName = asset?.name ?: "Unknown",
+                icon = asset?.iconName ?: "account_balance",
+                nominalStr = ""
+            ),
+            errorMessage = null
+        )
+    }
+
+    fun removeEditPocketAllocation(index: Int) {
+        val list = _uiState.value.editingPocketAllocations.toMutableList()
+        if (index !in list.indices) return
+        list.removeAt(index)
+        _uiState.value = _uiState.value.copy(editingPocketAllocations = list, errorMessage = null)
+    }
+
+    fun onEditPocketAllocationNominalChange(index: Int, value: String) {
+        val list = _uiState.value.editingPocketAllocations.toMutableList()
+        if (index !in list.indices) return
+        list[index] = list[index].copy(nominalStr = value)
+        _uiState.value = _uiState.value.copy(editingPocketAllocations = list, errorMessage = null)
+    }
+
+    fun cancelClearPocketAllocations() {
+        _uiState.value = _uiState.value.copy(isClearAllocConfirmOpen = false)
+    }
+
+    /** Parses allocation rows: blank nominal = no allocation, invalid chars = null (error). */
+    private fun parseAllocationRows(
+        rows: List<PocketAllocationUIModel>
+    ): List<Pair<String, Double>>? {
+        val parsed = mutableListOf<Pair<String, Double>>()
+        rows.forEach { row ->
+            val trimmed = row.nominalStr.trim()
+            if (trimmed.isBlank()) return@forEach
+            if (trimmed.any { !it.isDigit() && it != '.' && it != ',' && it != ' ' }) return null
+            val amount = Formatters.parseAmount(trimmed)
+            if (amount < 0) return null
+            if (amount > 0) parsed.add(row.assetId to amount)
+        }
+        return parsed
+    }
+
+    fun saveEditPocket(confirmedClear: Boolean = false): Job? {
         val state = _uiState.value
         val pocketId = state.editingPocketId ?: return null
 
@@ -282,6 +399,18 @@ class KantongViewModel(
             0.0
         }
 
+        val allocations = parseAllocationRows(state.editingPocketAllocations)
+            ?: run {
+                _uiState.value = state.copy(errorMessage = "Nominal alokasi tidak valid")
+                return null
+            }
+
+        // Total 0 with existing allocations = clear all, but only after confirmation
+        if (allocations.isEmpty() && state.editingPocketHadAllocations && !confirmedClear) {
+            _uiState.value = state.copy(isClearAllocConfirmOpen = true)
+            return null
+        }
+
         val descriptionWithMeta = if (state.editPocketDescription.isNotBlank()) {
             "${state.editPocketType} • ${state.editPocketDescription.trim()}"
         } else {
@@ -302,8 +431,48 @@ class KantongViewModel(
         )
 
         return viewModelScope.launch {
-            repository.updatePocket(updatedPocket)
-            closeEditPocketDialog()
+            try {
+                // Validation before writing: nominal <= saldoUtuh - totalPlanning + alokasiKantongIni
+                val dbAllocs = repository.getPocketAllocationsByPocket(pocketId).first()
+                val allAllocs = repository.getPocketAllocations().first()
+                val oldThisPocketByAsset = dbAllocs.groupBy { it.assetId }
+                    .mapValues { (_, v) -> v.sumOf { it.allocatedAmount } }
+                val planningByAsset = allAllocs.groupBy { it.assetId }
+                    .mapValues { (_, v) -> v.sumOf { it.allocatedAmount } }
+
+                for ((assetId, amount) in allocations) {
+                    val asset = repository.getAssetById(assetId)
+                        ?: throw IllegalArgumentException("Aset tidak ditemukan")
+                    val available = asset.balance -
+                        (planningByAsset[assetId] ?: 0.0) +
+                        (oldThisPocketByAsset[assetId] ?: 0.0)
+                    if (amount > available + 0.0001) {
+                        _uiState.value = _uiState.value.copy(
+                            errorMessage = "Nominal melebihi saldo tersedia ${asset.name} (${Formatters.formatRupiah(available)})"
+                        )
+                        return@launch
+                    }
+                }
+
+                repository.updatePocket(updatedPocket)
+                // Single DB transaction: DELETE all allocations of this pocket + INSERT new list
+                repository.replacePocketAllocations(
+                    pocketId,
+                    allocations.map { (assetId, amount) ->
+                        PocketAllocation(
+                            id = UUID.randomUUID().toString(),
+                            assetId = assetId,
+                            pocketId = pocketId,
+                            allocatedAmount = amount
+                        )
+                    }
+                )
+                closeEditPocketDialog()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = e.message ?: "Gagal menyimpan perubahan"
+                )
+            }
         }
     }
 
@@ -534,6 +703,148 @@ class KantongViewModel(
                 closeEditAssetDialog()
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(errorMessage = e.message ?: "Gagal memperbarui aset")
+            }
+        }
+    }
+
+    // --- Transfer antar aset ---
+
+    fun openTransferSheet(sourceAsset: Asset) {
+        _uiState.value = _uiState.value.copy(
+            isTransferSheetOpen = true,
+            transferSourceAssetId = sourceAsset.id,
+            transferSourceAssetName = sourceAsset.name,
+            transferTargetAssetId = "",
+            transferTargetAssetName = "",
+            transferAmountString = "",
+            transferDate = LocalDate.now(),
+            transferNote = "",
+            transferWarning = null,
+            errorMessage = null
+        )
+    }
+
+    fun closeTransferSheet() {
+        _uiState.value = _uiState.value.copy(
+            isTransferSheetOpen = false,
+            transferWarning = null
+        )
+    }
+
+    fun onTransferTargetAssetChange(assetId: String) {
+        val asset = assets.value.find { it.id == assetId }
+        _uiState.value = _uiState.value.copy(
+            transferTargetAssetId = assetId,
+            transferTargetAssetName = asset?.name ?: "",
+            transferWarning = null
+        )
+    }
+
+    fun onTransferAmountChange(amount: String) {
+        val state = _uiState.value
+        val sourceAsset = assets.value.find { it.id == state.transferSourceAssetId }
+        val trimmed = amount.trim()
+        
+        // Calculate warning if source has allocations
+        var warning: String? = null
+        if (trimmed.isNotBlank() && sourceAsset != null) {
+            if (trimmed.all { it.isDigit() || it == '.' || it == ',' || it == ' ' }) {
+                val amountVal = Formatters.parseAmount(trimmed)
+                if (amountVal > 0) {
+                    viewModelScope.launch {
+                        val allocs = repository.getPocketAllocationsByAsset(sourceAsset.id).first()
+                        val totalPlanning = allocs.sumOf { it.allocatedAmount }
+                        val remaining = sourceAsset.balance - amountVal
+                        if (remaining < totalPlanning - 0.0001) {
+                            if (_uiState.value.transferAmountString == amount) {
+                                _uiState.value = _uiState.value.copy(
+                                    transferWarning = "Sisa saldo akan kurang dari total planning — banner peringatan akan muncul."
+                                )
+                            }
+                        } else if (_uiState.value.transferAmountString == amount) {
+                            _uiState.value = _uiState.value.copy(transferWarning = null)
+                        }
+                    }
+                    _uiState.value = state.copy(transferAmountString = amount, transferWarning = null)
+                    return
+                }
+            }
+        }
+
+        _uiState.value = state.copy(transferAmountString = amount, transferWarning = warning)
+    }
+
+    fun onTransferDateChange(date: LocalDate) {
+        _uiState.value = _uiState.value.copy(transferDate = date)
+    }
+
+    fun onTransferNoteChange(note: String) {
+        _uiState.value = _uiState.value.copy(transferNote = note)
+    }
+
+    fun saveTransfer(): Job? {
+        val state = _uiState.value
+        
+        if (state.transferSourceAssetId.isBlank()) {
+            _uiState.value = state.copy(errorMessage = "Aset sumber tidak valid")
+            return null
+        }
+        if (state.transferTargetAssetId.isBlank()) {
+            _uiState.value = state.copy(errorMessage = "Pilih aset tujuan")
+            return null
+        }
+        if (state.transferSourceAssetId == state.transferTargetAssetId) {
+            _uiState.value = state.copy(errorMessage = "Aset sumber dan tujuan tidak boleh sama")
+            return null
+        }
+        
+        val trimmedAmount = state.transferAmountString.trim()
+        if (trimmedAmount.isBlank()) {
+            _uiState.value = state.copy(errorMessage = "Nominal transfer wajib diisi")
+            return null
+        }
+        if (trimmedAmount.any { !it.isDigit() && it != '.' && it != ',' && it != ' ' }) {
+            _uiState.value = state.copy(errorMessage = "Nominal tidak valid")
+            return null
+        }
+        
+        val amount = Formatters.parseAmount(trimmedAmount)
+        if (amount <= 0) {
+            _uiState.value = state.copy(errorMessage = "Nominal harus lebih besar dari 0")
+            return null
+        }
+        
+        val sourceAsset = assets.value.find { it.id == state.transferSourceAssetId }
+            ?: run { _uiState.value = state.copy(errorMessage = "Aset sumber tidak ditemukan"); return null }
+        val targetAsset = assets.value.find { it.id == state.transferTargetAssetId }
+            ?: run { _uiState.value = state.copy(errorMessage = "Aset tujuan tidak ditemukan"); return null }
+        
+        if (sourceAsset.balance < amount) {
+            _uiState.value = state.copy(errorMessage = "Saldo aset sumber tidak mencukupi untuk transfer")
+            return null
+        }
+        
+        return viewModelScope.launch {
+            try {
+                val transaction = Transaction(
+                    id = "tx_${System.currentTimeMillis()}",
+                    title = "Transfer",
+                    amount = amount,
+                    type = TransactionType.TRANSFER,
+                    categoryId = "",
+                    categoryName = "",
+                    categoryIcon = "",
+                    assetId = state.transferSourceAssetId,
+                    assetName = state.transferSourceAssetName,
+                    dateMillis = state.transferDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
+                    note = state.transferNote,
+                    targetAssetId = state.transferTargetAssetId,
+                    targetAssetName = state.transferTargetAssetName
+                )
+                repository.insertTransaction(transaction)
+                closeTransferSheet()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(errorMessage = e.message ?: "Gagal transfer dana")
             }
         }
     }
