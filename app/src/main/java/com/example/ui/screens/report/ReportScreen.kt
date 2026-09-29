@@ -216,7 +216,10 @@ fun ReportScreen(
                         excelDialogMessage = null
                         onNavigateToExport()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = SakuDarkGreen)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SakuDarkGreen,
+                        contentColor = Color.White
+                    )
                 ) {
                     Text("Buka Cadangan CSV")
                 }
@@ -239,7 +242,10 @@ fun ReportScreen(
             confirmButton = {
                 Button(
                     onClick = { cloudDialogMessage = null },
-                    colors = ButtonDefaults.buttonColors(containerColor = SakuDarkGreen)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SakuDarkGreen,
+                        contentColor = Color.White
+                    )
                 ) {
                     Text("Mengerti")
                 }
@@ -379,7 +385,10 @@ fun PeriodFilterSection(
                         }
                         showRangePicker = false
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = SakuDarkGreen)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SakuDarkGreen,
+                        contentColor = Color.White
+                    )
                 ) {
                     Text("Pilih")
                 }

@@ -16,7 +16,7 @@ class MainActivity : ComponentActivity() {
         appContainer = SakuAppContainer(applicationContext)
 
         setContent {
-            MyApplicationTheme {
+            MyApplicationTheme(darkTheme = false) {
                 SakuNavHost(container = appContainer)
             }
         }

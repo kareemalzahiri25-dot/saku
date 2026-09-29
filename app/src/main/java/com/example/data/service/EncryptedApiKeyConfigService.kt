@@ -70,7 +70,7 @@ class EncryptedApiKeyConfigService(context: Context) : ApiKeyConfigService {
     override fun getGeminiApiKey(): String? {
         ensureMigration()
         val stored = prefs.getString(KEY_GEMINI_API, null)
-        return if (!stored.isNullOrBlank()) stored else null
+        return if (!stored.isNullOrBlank()) stored.trim() else null
     }
 
     override fun setGeminiApiKey(key: String) {

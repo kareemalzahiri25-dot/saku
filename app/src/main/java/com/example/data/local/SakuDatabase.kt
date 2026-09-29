@@ -34,7 +34,7 @@ import kotlinx.coroutines.launch
         PocketAllocationEntity::class,
         ExpenseAllocationEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class SakuDatabase : RoomDatabase() {
@@ -256,22 +256,31 @@ abstract class SakuDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `idx_pocket_allocations_assetId` ON `pocket_allocations`(`assetId`)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `idx_pocket_allocations_pocketId` ON `pocket_allocations`(`pocketId`)")
             }
-        }
+                }
 
-        fun getDatabase(context: Context, scope: CoroutineScope): SakuDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    SakuDatabase::class.java,
-                    "saku_database.db"
-                )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
-                .addCallback(SakuDatabaseCallback(scope))
-                .build()
-                INSTANCE = instance
-                instance
-            }
-        }
+                val MIGRATION_3_4 = object : Migration(3, 4) {
+                    override fun migrate(db: SupportSQLiteDatabase) {
+                        // Add missing columns to assets table: iconName, colorHex, isDefault
+                        db.execSQL("ALTER TABLE `assets` ADD COLUMN `iconName` TEXT NOT NULL DEFAULT 'account_balance'")
+                        db.execSQL("ALTER TABLE `assets` ADD COLUMN `colorHex` TEXT NOT NULL DEFAULT '#153E35'")
+                        db.execSQL("ALTER TABLE `assets` ADD COLUMN `isDefault` INTEGER NOT NULL DEFAULT 0")
+                    }
+                }
+
+                fun getDatabase(context: Context, scope: CoroutineScope): SakuDatabase {
+                    return INSTANCE ?: synchronized(this) {
+                        val instance = Room.databaseBuilder(
+                            context.applicationContext,
+                            SakuDatabase::class.java,
+                            "saku_database.db"
+                        )
+                        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                        .addCallback(SakuDatabaseCallback(scope))
+                        .build()
+                        INSTANCE = instance
+                        instance
+                    }
+                }
     }
 
     private class SakuDatabaseCallback(

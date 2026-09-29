@@ -68,7 +68,9 @@ data class TransactionFormState(
     // API Key verification status for AI Scan gating
     val apiKeyVerificationStatus: ApiKeyVerificationStatus = ApiKeyVerificationStatus.Unknown,
     // Backward compatibility
-    val isScanningSheetOpen: Boolean = false
+    val isScanningSheetOpen: Boolean = false,
+    // Whether "Coba Lagi" is available (last image bytes are stored)
+    val canRetryScan: Boolean = false
 )
 
 class TransactionViewModel(
@@ -91,6 +93,9 @@ class TransactionViewModel(
 
     private val _selectedAssetId = MutableStateFlow("")
     val selectedAssetId: StateFlow<String> = _selectedAssetId
+
+    // Internal state: last scanned image bytes for retry (not in StateFlow to avoid serialization overhead)
+    private var lastScannedImageBytes: ByteArray? = null
 
     init {
         viewModelScope.launch {
@@ -231,6 +236,11 @@ class TransactionViewModel(
         return apiKeyConfigService.getVerificationStatus() == ApiKeyVerificationStatus.Verified
     }
 
+    /** Check if AI Scan is currently enabled (configured + verified), synced at button click time */
+    fun isAiScanEnabled(): Boolean {
+        return isAiConfigured() && isApiKeyVerified()
+    }
+
     fun dismissScanMethodSheet() {
         _formState.value = _formState.value.copy(isScanMethodSheetOpen = false)
     }
@@ -255,10 +265,13 @@ class TransactionViewModel(
     }
 
     fun onScanError(message: String) {
+        // Read failure = tidak ada gambar valid untuk retry
+        lastScannedImageBytes = null
         _formState.value = _formState.value.copy(
             isScanning = false,
             scanStatusMessage = null,
-            scanErrorMessage = message
+            scanErrorMessage = message,
+            canRetryScan = false
         )
     }
 
@@ -314,6 +327,9 @@ class TransactionViewModel(
         uriString: String? = null,
         mode: ScanEngineMode = _formState.value.scanMode
     ) {
+        // Store image bytes for potential retry
+        lastScannedImageBytes = imageBytes
+
         viewModelScope.launch {
             _formState.value = _formState.value.copy(
                 isScanning = true,
@@ -337,15 +353,26 @@ class TransactionViewModel(
                     scanStatusMessage = null,
                     scannedResult = result,
                     scannedImageUri = uriString,
-                    isReviewDialogOpen = true
+                    isReviewDialogOpen = true,
+                    canRetryScan = true
                 )
             } catch (e: Exception) {
                 _formState.value = _formState.value.copy(
                     isScanning = false,
                     scanStatusMessage = null,
-                    scanErrorMessage = e.message ?: "Terjadi kesalahan saat memproses gambar struk."
+                    scanErrorMessage = e.message ?: "Terjadi kesalahan saat memproses gambar struk.",
+                    canRetryScan = true // Retry available since we have the bytes
                 )
             }
+        }
+    }
+
+    /** Retry scan with last captured image */
+    fun retryScan() {
+        lastScannedImageBytes?.let { bytes ->
+            val currentMode = _formState.value.scanMode
+            val currentUri = _formState.value.scannedImageUri
+            processReceipt(bytes, currentUri, currentMode)
         }
     }
 

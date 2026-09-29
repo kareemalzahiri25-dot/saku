@@ -108,9 +108,11 @@ class ProfileViewModel(
     }
 
     fun saveApiKey() {
-        apiKeyConfigService.setGeminiApiKey(_uiState.value.geminiApiKeyInput)
+        val trimmedKey = _uiState.value.geminiApiKeyInput.trim()
+        apiKeyConfigService.setGeminiApiKey(trimmedKey)
         apiKeyConfigService.setVerificationStatus(ApiKeyVerificationStatus.Unknown)
         _uiState.value = _uiState.value.copy(
+            geminiApiKeyInput = trimmedKey, // Update state with trimmed value
             isApiKeyDialogOpen = false,
             isApiKeySaved = apiKeyConfigService.isGeminiConfigured(),
             apiKeyVerificationStatus = ApiKeyVerificationStatus.Unknown,

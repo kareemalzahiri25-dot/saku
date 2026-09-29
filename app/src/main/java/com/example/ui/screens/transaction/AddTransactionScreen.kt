@@ -978,11 +978,10 @@ fun AddTransactionScreen(
                     val isAiEnabled = viewModel.isAiConfigured() && aiVerificationStatus == ApiKeyVerificationStatus.Verified
                     Surface(
                         onClick = {
-                            if (isAiEnabled) {
-                                val ready = viewModel.onSelectScanMethod(ScanEngineMode.AI)
-                                if (ready) {
-                                    proceedWithChosenSource()
-                                }
+                            // Cek sinkron saat tombol diklik (polling state bisa stale)
+                            val ready = viewModel.onSelectScanMethod(ScanEngineMode.AI)
+                            if (ready) {
+                                proceedWithChosenSource()
                             }
                         },
                         shape = RoundedCornerShape(16.dp),
@@ -1111,7 +1110,10 @@ fun AddTransactionScreen(
                             viewModel.dismissApiKeyMissingDialog()
                             onNavigateToProfile()
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = SakuDarkGreen),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SakuDarkGreen,
+                            contentColor = Color.White
+                        ),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.testTag("api_key_missing_profile_button")
                     ) {
@@ -1167,7 +1169,10 @@ fun AddTransactionScreen(
                             viewModel.dismissCameraPermissionDeniedDialog()
                             launchGalleryFlow()
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = SakuDarkGreen),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SakuDarkGreen,
+                            contentColor = Color.White
+                        ),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text("Pilih dari Galeri")
@@ -1255,7 +1260,10 @@ fun AddTransactionScreen(
                         Spacer(modifier = Modifier.height(24.dp))
                         Button(
                             onClick = { viewModel.clearScanSuccessMessage() },
-                            colors = ButtonDefaults.buttonColors(containerColor = SakuDarkGreen),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = SakuDarkGreen,
+                                contentColor = Color.White
+                            ),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text("Lanjutkan", style = MaterialTheme.typography.titleMedium)
@@ -1263,6 +1271,57 @@ fun AddTransactionScreen(
                     }
                 }
             }
+        }
+
+        // --- Dialog 5: Scan Error (dengan retry) ---
+        if (formState.scanErrorMessage != null) {
+            AlertDialog(
+                onDismissRequest = { viewModel.clearScanError() },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = SakuExpenseRed,
+                        modifier = Modifier.size(32.dp)
+                    )
+                },
+                title = {
+                    Text(
+                        text = "Gagal Memindai Struk",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = SakuDarkGreen
+                        )
+                    )
+                },
+                text = {
+                    Text(
+                        text = formState.scanErrorMessage ?: "",
+                        style = MaterialTheme.typography.bodyMedium.copy(color = SakuTextSecondary)
+                    )
+                },
+                confirmButton = {
+                    if (formState.canRetryScan) {
+                        Button(
+                            onClick = { viewModel.retryScan() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = SakuDarkGreen,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.testTag("scan_retry_button")
+                        ) {
+                            Text("Coba Lagi")
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.clearScanError() }) {
+                        Text("Tutup", color = SakuTextSecondary)
+                    }
+                },
+                containerColor = SakuCreamSurface
+            )
         }
     }
 }

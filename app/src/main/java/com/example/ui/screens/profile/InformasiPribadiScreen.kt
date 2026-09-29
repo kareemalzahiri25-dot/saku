@@ -31,14 +31,18 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Help
 import androidx.compose.material.icons.filled.HourglassTop
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -70,9 +74,12 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -167,7 +174,10 @@ fun InformasiPribadiScreen(
             confirmButton = {
                         Button(
                             onClick = { viewModel.confirmSaveData(namaLengkap, email) },
-                            colors = ButtonDefaults.buttonColors(containerColor = SakuDarkGreen)
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = SakuDarkGreen,
+                                contentColor = Color.White
+                            )
                         ) {
                             Text("Simpan")
                         }
@@ -263,7 +273,10 @@ fun InformasiPribadiScreen(
                     .fillMaxWidth()
                     .padding(top = 20.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = SakuDarkGreen)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = SakuDarkGreen,
+                    contentColor = Color.White
+                )
             ) {
                 Text("Simpan", style = MaterialTheme.typography.labelLarge.copy(color = Color.White))
             }
@@ -509,6 +522,18 @@ fun KeamananMenuItem(
     }
 }
 
+// Custom VisualTransformation: mask all but last 4 chars (same length → identity offset mapping is correct)
+class MaskKeyTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val masked = if (text.length > 4) {
+            "•".repeat(text.length - 4) + text.takeLast(4)
+        } else {
+            text.text
+        }
+        return TransformedText(AnnotatedString(masked), OffsetMapping.Identity)
+    }
+}
+
 @Composable
 fun ApiKeyConfigurationSection(
     uiState: ProfileUiState,
@@ -517,22 +542,50 @@ fun ApiKeyConfigurationSection(
     onSave: () -> Unit,
     onShowSnackbar: (String) -> Unit
 ) {
+    var showKey by remember { mutableStateOf(false) }
+    // ponytail: snapshot of last saved key — mask only while input still matches it; any edit unmasks
+    var savedKey by remember { mutableStateOf(if (uiState.isApiKeySaved) uiState.geminiApiKeyInput else "") }
+    val currentInput = uiState.geminiApiKeyInput
+    val isMasked = !showKey && savedKey.isNotEmpty() && currentInput == savedKey
+    // saveApiKey() persists synchronously, so re-snapshot after it returns
+    val handleSave = {
+        onSave()
+        savedKey = currentInput
+        showKey = false
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            text = "Konfigurasi API Key",
+            text = "Konfigurasi API Key Gemini",
             style = MaterialTheme.typography.titleSmall.copy(
                 fontWeight = FontWeight.Bold,
                 color = SakuDarkGreen
             )
         )
+        
+        Text(
+            text = "Tempel API key untuk mengaktifkan fitur scan struk AI",
+            style = MaterialTheme.typography.bodySmall.copy(color = SakuTextSecondary),
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
 
+        // API Key Input Field with visibility toggle
         OutlinedTextField(
-            value = uiState.geminiApiKeyInput,
+            value = currentInput,
             onValueChange = onApiKeyChange,
             label = { Text("API Key Gemini") },
             placeholder = { Text("AIzaSy...") },
             singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (isMasked) MaskKeyTransformation() else VisualTransformation.None,
+            trailingIcon = {
+                IconButton(onClick = { showKey = !showKey }) {
+                    Icon(
+                        imageVector = if (showKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = if (showKey) "Sembunyikan" else "Tampilkan",
+                        tint = SakuTextSecondary
+                    )
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
@@ -541,66 +594,128 @@ fun ApiKeyConfigurationSection(
             )
         )
 
+        // Action Buttons: Save primary, Test Connection secondary (only enabled when saved)
+        val hasSavedKey = uiState.isApiKeySaved
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            OutlinedButton(
-                onClick = onVerify,
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Verifikasi")
-            }
-
             Button(
-                onClick = onSave,
+                onClick = handleSave,
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = SakuDarkGreen
+                    containerColor = SakuDarkGreen,
+                    contentColor = Color.White
                 )
             ) {
                 Text("Simpan")
             }
+
+            OutlinedButton(
+                onClick = onVerify,
+                enabled = hasSavedKey,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, if (hasSavedKey) SakuDarkGreen else SakuTextMuted)
+            ) {
+                Text("Uji Koneksi")
+            }
         }
 
-        // Verification status display
+        // Status Badge (Chip-style)
         val status = uiState.apiKeyVerificationStatus
-        val statusColor = when (status) {
-            ApiKeyVerificationStatus.Verified -> SakuIncomeGreen
-            ApiKeyVerificationStatus.Invalid, ApiKeyVerificationStatus.QuotaExceeded -> SakuExpenseRed
-            ApiKeyVerificationStatus.NetworkError -> SakuExpenseRed
-            ApiKeyVerificationStatus.Verifying -> SakuGoldAccent
-            ApiKeyVerificationStatus.Unknown -> SakuTextMuted
+        val badgeText: String
+        val badgeColor: Color
+        val badgeBgColor: Color
+        val showSpinner: Boolean
+        when {
+            !hasSavedKey -> {
+                badgeText = "Belum Ada"
+                badgeColor = SakuTextMuted
+                badgeBgColor = SakuTextMuted.copy(alpha = 0.12f)
+                showSpinner = false
+            }
+            status == ApiKeyVerificationStatus.Verifying -> {
+                badgeText = "Verifikasi..."
+                badgeColor = SakuGoldAccent
+                badgeBgColor = SakuGoldAccent.copy(alpha = 0.12f)
+                showSpinner = true
+            }
+            status == ApiKeyVerificationStatus.Verified -> {
+                badgeText = "Terverifikasi ✓"
+                badgeColor = SakuIncomeGreen
+                badgeBgColor = SakuIncomeGreen.copy(alpha = 0.12f)
+                showSpinner = false
+            }
+            status == ApiKeyVerificationStatus.Invalid || status == ApiKeyVerificationStatus.QuotaExceeded || status == ApiKeyVerificationStatus.NetworkError -> {
+                badgeText = "Gagal / Tidak Valid"
+                badgeColor = SakuExpenseRed
+                badgeBgColor = SakuExpenseRed.copy(alpha = 0.12f)
+                showSpinner = false
+            }
+            else -> {
+                badgeText = "Tersimpan"
+                badgeColor = SakuIncomeGreen
+                badgeBgColor = SakuIncomeGreen.copy(alpha = 0.12f)
+                showSpinner = false
+            }
         }
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(top = 8.dp),
+            horizontalArrangement = Arrangement.Start
         ) {
-            Icon(
-                imageVector = when (status) {
-                    ApiKeyVerificationStatus.Verified -> Icons.Default.CheckCircle
-                    ApiKeyVerificationStatus.Invalid, ApiKeyVerificationStatus.QuotaExceeded -> Icons.Default.Close
-                    ApiKeyVerificationStatus.NetworkError -> Icons.Default.WifiOff
-                    ApiKeyVerificationStatus.Verifying -> Icons.Default.HourglassTop
-                    ApiKeyVerificationStatus.Unknown -> Icons.Default.Help
-                },
-                contentDescription = null,
-                tint = statusColor,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Status: ${status.label}",
-                style = MaterialTheme.typography.bodySmall.copy(
-                    color = statusColor,
-                    fontWeight = if (status == ApiKeyVerificationStatus.Verified) FontWeight.Bold else FontWeight.Normal
-                )
-            )
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .background(badgeBgColor, RoundedCornerShape(16.dp))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (showSpinner) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            color = badgeColor,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                    } else {
+                        Icon(
+                            imageVector = when {
+                                status == ApiKeyVerificationStatus.Verified -> Icons.Default.CheckCircle
+                                status == ApiKeyVerificationStatus.Verifying -> Icons.Default.HourglassTop
+                                status == ApiKeyVerificationStatus.Invalid || status == ApiKeyVerificationStatus.QuotaExceeded || status == ApiKeyVerificationStatus.NetworkError -> Icons.Default.Close
+                                else -> Icons.Default.Info
+                            },
+                            contentDescription = null,
+                            tint = badgeColor,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text(
+                        text = badgeText,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = badgeColor,
+                            fontWeight = if (status == ApiKeyVerificationStatus.Verified) FontWeight.Bold else FontWeight.Medium
+                        )
+                    )
+                }
+            }
         }
+
+        // Helper text
+        Text(
+            text = "Dapatkan API key di https://aistudio.google.com/app/apikey",
+            style = MaterialTheme.typography.bodySmall.copy(
+                color = SakuTextMuted
+            ),
+            modifier = Modifier.padding(top = 4.dp)
+        )
     }
 }

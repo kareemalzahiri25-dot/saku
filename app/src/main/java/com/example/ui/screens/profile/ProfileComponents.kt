@@ -606,7 +606,10 @@ fun BackupDialog(
                     onClick = onExport,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = SakuDarkGreen)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SakuDarkGreen,
+                        contentColor = Color.White
+                    )
                 ) {
                     Text("Ekspor CSV/JSON")
                 }

@@ -20,13 +20,19 @@ data class AssetEntity(
     val typeString: String,
     val balance: Double,
     val currency: String = "IDR",
-    val isActive: Boolean = true
+    val isActive: Boolean = true,
+    val iconName: String = "account_balance",
+    val colorHex: String = "#153E35",
+    val isDefault: Boolean = false
 ) {
     fun toDomain(): Asset = Asset(
         id = id,
         name = name,
         type = try { AssetType.valueOf(typeString) } catch (e: Exception) { AssetType.BANK },
-        balance = balance
+        balance = balance,
+        iconName = iconName,
+        colorHex = colorHex,
+        isDefault = isDefault
     )
 
     companion object {
@@ -36,7 +42,10 @@ data class AssetEntity(
             typeString = asset.type.name,
             balance = asset.balance,
             currency = "IDR",
-            isActive = true
+            isActive = true,
+            iconName = asset.iconName,
+            colorHex = asset.colorHex,
+            isDefault = asset.isDefault
         )
     }
 }

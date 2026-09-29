@@ -2,8 +2,14 @@ package com.example.data.service
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.ExifInterface
 import android.util.Base64
 import com.example.domain.model.TransactionType
+import com.google.android.gms.tasks.Tasks
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.TextRecognizer
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -12,6 +18,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -61,24 +68,86 @@ class DefaultReceiptScannerService(
         if (imageBytes.isEmpty()) {
             throw IllegalArgumentException("Gambar struk kosong atau tidak dapat dibaca.")
         }
-        val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+
+        // Decode bitmap dengan orientasi EXIF correction
+        val bitmap = decodeBitmapWithExif(imageBytes)
             ?: throw IllegalArgumentException("Format gambar tidak didukung atau file rusak.")
 
-        // Ekstraksi OCR Standar / Offline
-        // Abstraksi disiapkan agar di kemudian hari dapat dihubungkan ke Google ML Kit Text Recognition.
-        // Tidak menggunakan hasil hardcoded/palsu — mengembalikan representasi gambar riil agar pengguna mengisi/mengonfirmasi data.
-        val infoText = "Foto struk berukuran ${bitmap.width}x${bitmap.height} px siap dikonfirmasi."
+        // Batasi ukuran bitmap untuk mencegah OOM (max 2000px sisi terpanjang)
+        val processedBitmap = try {
+            downscaleBitmapIfNeeded(bitmap, 2000)
+        } catch (e: Exception) {
+            throw ReceiptScanException("Gagal memproses gambar (memori tidak cukup atau file terlalu besar). Coba foto lagi dengan ukuran lebih kecil.", e)
+        }
 
-        ScannedReceiptResult(
-            merchantName = null,
-            dateMillis = System.currentTimeMillis(),
-            totalAmount = null,
-            suggestedCategory = null,
-            suggestedType = TransactionType.EXPENSE,
-            items = emptyList(),
-            rawText = infoText,
-            confidence = 0.85f
-        )
+        // ML Kit Text Recognition (bundled/offline model)
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        try {
+            val inputImage = InputImage.fromBitmap(processedBitmap, 0)
+            val mlKitText = Tasks.await(recognizer.process(inputImage))
+
+            val rawText = mlKitText.text
+            if (rawText.isBlank()) {
+                throw ReceiptScanException("Tidak ada teks terdeteksi pada gambar. Foto mungkin terlalu gelap, buram, atau kecil. Coba ambil foto lagi dengan cahaya lebih terang dan posisi horizontal.")
+            }
+
+            // Parse hasil OCR
+            val parsed = ReceiptOcrParser.parse(rawText)
+
+            ScannedReceiptResult(
+                merchantName = parsed.merchantName,
+                dateMillis = parsed.dateMillis,
+                totalAmount = parsed.totalAmount,
+                suggestedCategory = null, // OCR basic tidak infer kategori
+                suggestedType = TransactionType.EXPENSE,
+                items = emptyList(), // OCR basic tidak ekstrak item detail
+                rawText = parsed.rawText,
+                confidence = parsed.confidence
+            )
+        } finally {
+            // Tutup recognizer untuk bebaskan resource (always, even if exception)
+            recognizer.close()
+        }
+    }
+
+    /**
+     * Decode bitmap dan koreksi orientasi berdasarkan EXIF data.
+     */
+    private fun decodeBitmapWithExif(imageBytes: ByteArray): Bitmap? {
+        val options = BitmapFactory.Options().apply {
+            inMutable = true // agar bisa di-rotate
+        }
+        val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, options)
+        if (bitmap == null) return null
+
+        // Baca orientasi EXIF
+        val exif = ExifInterface(ByteArrayInputStream(imageBytes))
+        val orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+
+        return when (orientation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> rotateBitmap(bitmap, 90f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> rotateBitmap(bitmap, 180f)
+            ExifInterface.ORIENTATION_ROTATE_270 -> rotateBitmap(bitmap, 270f)
+            else -> bitmap
+        }
+    }
+
+    private fun rotateBitmap(bitmap: Bitmap, degrees: Float): Bitmap {
+        val matrix = android.graphics.Matrix().apply { postRotate(degrees) }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+    }
+
+    /**
+     * Downscale bitmap jika melebihi maxDimension untuk mencegah OOM.
+     */
+    private fun downscaleBitmapIfNeeded(bitmap: Bitmap, maxDimension: Int): Bitmap {
+        if (bitmap.width <= maxDimension && bitmap.height <= maxDimension) {
+            return bitmap
+        }
+        val scale = maxDimension.toFloat() / maxOf(bitmap.width, bitmap.height)
+        val newWidth = (bitmap.width * scale).toInt()
+        val newHeight = (bitmap.height * scale).toInt()
+        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
     }
 
     override suspend fun scanReceiptWithAi(imageBytes: ByteArray, prompt: String?): ScannedReceiptResult = withContext(Dispatchers.IO) {

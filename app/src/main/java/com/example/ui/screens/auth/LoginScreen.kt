@@ -62,6 +62,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.ui.components.SakuCard
+import com.example.ui.components.auth.AuthTextField
+import com.example.ui.components.auth.AuthPrimaryButton
+import com.example.ui.components.auth.AuthErrorText
+import com.example.ui.components.auth.AuthFooterLink
+import com.example.ui.components.auth.AuthQuoteCard
 import com.example.ui.theme.SakuCreamBackground
 import com.example.ui.theme.SakuCreamBorder
 import com.example.ui.theme.SakuCreamSurface
@@ -99,7 +104,21 @@ fun LoginScreen(
         ) {
             Spacer(modifier = Modifier.height(16.dp))
 
-            // App Brand Header (Gambar 1 — judul besar + ikon wallet kanan)
+            // "SELAMAT DATANG DI" header
+            Text(
+                text = "SELAMAT DATANG DI",
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    color = SakuDarkGreen,
+                    letterSpacing = 2.sp,
+                    textAlign = TextAlign.Center
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // App Brand Header (judul besar + ikon wallet)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -117,7 +136,7 @@ fun LoginScreen(
                 Icon(
                     imageVector = Icons.Default.AccountBalanceWallet,
                     contentDescription = "Ikon Dompet",
-                    tint = SakuGoldAccent,
+                    tint = SakuDarkGreen,
                     modifier = Modifier.size(36.dp)
                 )
             }
@@ -125,7 +144,7 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Masuk untuk mencapai keuanganmu",
+                text = "Masuk untuk merecap keuanganmu.",
                 style = MaterialTheme.typography.bodyMedium.copy(
                     color = SakuTextMuted,
                     textAlign = TextAlign.Center
@@ -136,80 +155,35 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             // Email/Phone Field — satu field, hint "Email / Nomor Telepon"
-            OutlinedTextField(
+            AuthTextField(
                 value = uiState.email,
                 onValueChange = { viewModel.onEmailChange(it) },
-                label = { Text("Email / Nomor Telepon") },
-                placeholder = { Text("nama@email.com atau 0812...") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Email,
-                        contentDescription = null,
-                        tint = SakuDarkGreen
-                    )
-                },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Email,
-                    imeAction = ImeAction.Next
-                ),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = SakuDarkGreen,
-                    unfocusedBorderColor = SakuCreamBorder,
-                    focusedLabelColor = SakuDarkGreen,
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = SakuCreamBackground
-                ),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("login_email_input")
+                label = "Email / Nomor Telepon",
+                placeholder = "nama@email.com atau 0812...",
+                leadingIcon = Icons.Default.Email,
+                keyboardType = KeyboardType.Email,
+                imeAction = ImeAction.Next,
+                testTag = "login_email_input"
             )
 
             Spacer(modifier = Modifier.height(14.dp))
 
             // Password Field — dengan toggle visibility
-            OutlinedTextField(
+            AuthTextField(
                 value = uiState.password,
                 onValueChange = { viewModel.onPasswordChange(it) },
-                label = { Text("Kata Sandi") },
-                placeholder = { Text("••••••••") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = null,
-                        tint = SakuDarkGreen
-                    )
-                },
-                trailingIcon = {
-                    IconButton(onClick = { viewModel.togglePasswordVisibility() }) {
-                        Icon(
-                            imageVector = if (uiState.isPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = if (uiState.isPasswordVisible) "Sembunyikan" else "Tampilkan",
-                            tint = SakuTextMuted
-                        )
-                    }
-                },
-                visualTransformation = if (uiState.isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    imeAction = ImeAction.Done
-                ),
+                label = "Kata Sandi",
+                placeholder = "••••••••",
+                leadingIcon = Icons.Default.Lock,
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done,
                 keyboardActions = KeyboardActions(
                     onDone = { viewModel.login(onLoginSuccess) }
                 ),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = SakuDarkGreen,
-                    unfocusedBorderColor = SakuCreamBorder,
-                    focusedLabelColor = SakuDarkGreen,
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = SakuCreamBackground
-                ),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("login_password_input")
+                isPasswordVisible = uiState.isPasswordVisible,
+                onToggleVisibility = { viewModel.togglePasswordVisibility() },
+                visualTransformation = PasswordVisualTransformation(),
+                testTag = "login_password_input"
             )
 
             // Forgot Password Link — di BAWAH field, rata kanan
@@ -222,7 +196,7 @@ fun LoginScreen(
                     modifier = Modifier.testTag("forgot_password_button")
                 ) {
                     Text(
-                        text = "Lupa Kata Sandi?",
+                        text = "Lupa kata sandi?",
                         style = MaterialTheme.typography.labelMedium.copy(
                             color = SakuDarkGreen,
                             fontWeight = FontWeight.SemiBold
@@ -232,48 +206,20 @@ fun LoginScreen(
             }
 
             // Inline error message
-            if (uiState.errorMessage != null) {
-                Text(
-                    text = uiState.errorMessage ?: "",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = SakuExpenseRed,
-                        fontWeight = FontWeight.Medium
-                    ),
-                    modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
-                )
-            }
+            AuthErrorText(
+                errorMessage = uiState.errorMessage,
+                testTag = "login_error_text"
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
 
             // Login Button (primary, full width)
-            Button(
+            AuthPrimaryButton(
+                text = "Masuk",
                 onClick = { viewModel.login(onLoginSuccess) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = SakuDarkGreen,
-                    contentColor = Color.White
-                ),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .testTag("login_submit_button"),
-                enabled = !uiState.isLoading
-            ) {
-                if (uiState.isLoading) {
-                    CircularProgressIndicator(
-                        color = Color.White,
-                        modifier = Modifier.size(24.dp),
-                        strokeWidth = 2.5.dp
-                    )
-                } else {
-                    Text(
-                        text = "Masuk",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold
-                        )
-                    )
-                }
-            }
+                isLoading = uiState.isLoading,
+                testTag = "login_submit_button"
+            )
 
             // Quick Demo Button — sebelum divider, outlined/text style
             Spacer(modifier = Modifier.height(10.dp))
@@ -290,7 +236,7 @@ fun LoginScreen(
                 Text(
                     text = "Masuk Cepat Sebagai Pengguna Demo",
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        color = SakuGoldAccent,
+                        color = SakuDarkGreen,
                         fontWeight = FontWeight.SemiBold
                     )
                 )
@@ -325,7 +271,7 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Social Buttons — Google & Facebook side by side
+            // Social Buttons — Google & Facebook side by side with real logos
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -338,11 +284,9 @@ fun LoginScreen(
                         .testTag("google_login_button"),
                     border = BorderStroke(1.dp, SakuCreamBorder)
                 ) {
-                    // Placeholder Google icon (simple circle)
                     Icon(
-                        imageVector = Icons.Default.AccountBalanceWallet,
+                        painter = painterResource(id = R.drawable.ic_google),
                         contentDescription = "Google",
-                        tint = SakuTextMuted,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -363,11 +307,9 @@ fun LoginScreen(
                         .testTag("facebook_login_button"),
                     border = BorderStroke(1.dp, SakuCreamBorder)
                 ) {
-                    // Placeholder Facebook icon (simple circle)
                     Icon(
-                        imageVector = Icons.Default.AccountBalanceWallet,
+                        painter = painterResource(id = R.drawable.ic_facebook),
                         contentDescription = "Facebook",
-                        tint = SakuTextMuted,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -384,30 +326,19 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
             // Register Footer
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Belum punya akun?",
-                    style = MaterialTheme.typography.bodyMedium.copy(color = SakuTextSecondary)
-                )
-                TextButton(
-                    onClick = onNavigateToRegister,
-                    modifier = Modifier.testTag("register_navigation_button")
-                ) {
-                    Text(
-                        text = "Buat Akun Baru",
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            color = SakuDarkGreen,
-                            fontWeight = FontWeight.Bold
-                        )
-                    )
-                }
-            }
+            AuthFooterLink(
+                prefixText = "Belum punya akun?",
+                linkText = "Buat Akun Baru",
+                onClick = onNavigateToRegister,
+                testTag = "register_navigation_button"
+            )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Quote Card — kartu bawah
+            AuthQuoteCard()
+
+            Spacer(modifier = Modifier.height(4.dp))
         }
     }
 }

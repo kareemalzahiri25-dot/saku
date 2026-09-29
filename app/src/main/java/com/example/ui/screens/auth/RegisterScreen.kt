@@ -14,45 +14,60 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.ui.components.SakuCard
+import com.example.R
+import com.example.ui.components.auth.AuthTextField
+import com.example.ui.components.auth.AuthPrimaryButton
+import com.example.ui.components.auth.AuthErrorText
+import com.example.ui.components.auth.AuthFooterLink
+import com.example.ui.components.auth.AuthQuoteCard
 import com.example.ui.theme.SakuCreamBackground
 import com.example.ui.theme.SakuCreamBorder
-import com.example.ui.theme.SakuCreamSurface
 import com.example.ui.theme.SakuDarkGreen
-import com.example.ui.theme.SakuExpenseRed
 import com.example.ui.theme.SakuTextMuted
 import com.example.ui.theme.SakuTextPrimary
 import com.example.ui.theme.SakuTextSecondary
@@ -65,6 +80,11 @@ fun RegisterScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
+    val termsAccepted = remember { mutableStateOf(false) }
+    val phoneNumber = remember { mutableStateOf("") }
+    val passwordVisible = remember { mutableStateOf(false) }
+    val confirmPasswordVisible = remember { mutableStateOf(false) }
+    val localErrorMessage = remember { mutableStateOf<String?>(null) }
 
     Box(
         modifier = Modifier
@@ -81,19 +101,24 @@ fun RegisterScreen(
         ) {
             IconButton(
                 onClick = onNavigateBack,
-                modifier = Modifier.testTag("register_back_button")
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Kembali ke Masuk",
-                    tint = SakuDarkGreen
-                )
-            }
+                modifier = Modifier
+                    .size(44.dp)
+                    .border(2.dp, SakuDarkGreen, CircleShape)
+                    .testTag("register_back_button"),
+                content = {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "Kembali ke Masuk",
+                        tint = SakuDarkGreen,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = "Daftar Akun Saku",
+                text = "Buat Akun",
                 style = MaterialTheme.typography.headlineSmall.copy(
                     fontWeight = FontWeight.Bold,
                     color = SakuDarkGreen
@@ -101,177 +126,255 @@ fun RegisterScreen(
             )
 
             Text(
-                text = "Mulai kelola anggaran dan transaksi secara rapi dan aman",
+                text = "Saku",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = SakuDarkGreen
+                )
+            )
+
+            Text(
+                text = "Mulai kelola keuanganmu dengan lebih mudah.",
                 style = MaterialTheme.typography.bodyMedium.copy(color = SakuTextSecondary),
                 modifier = Modifier.padding(top = 4.dp, bottom = 24.dp)
             )
 
-            SakuCard(
+            // Full Name
+            AuthTextField(
+                value = uiState.fullName,
+                onValueChange = { 
+                    viewModel.onFullNameChange(it)
+                    localErrorMessage.value = null
+                },
+                label = "Nama Lengkap",
+                placeholder = "misal: Budi Santoso",
+                leadingIcon = Icons.Default.Person,
+                keyboardType = KeyboardType.Text,
+                imeAction = ImeAction.Next,
+                testTag = "register_name_input"
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Email
+            AuthTextField(
+                value = uiState.email,
+                onValueChange = { 
+                    viewModel.onEmailChange(it)
+                    localErrorMessage.value = null
+                },
+                label = "Email",
+                placeholder = "nama@email.com",
+                leadingIcon = Icons.Default.Email,
+                keyboardType = KeyboardType.Email,
+                imeAction = ImeAction.Next,
+                testTag = "register_email_input"
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Phone
+            // ponytail: local state only — no phoneNumber field in AuthViewModel yet; add when backend needs it
+            AuthTextField(
+                value = phoneNumber.value,
+                onValueChange = { 
+                    phoneNumber.value = it
+                    localErrorMessage.value = null
+                },
+                label = "Nomor Telepon",
+                placeholder = "0812...",
+                leadingIcon = Icons.Default.Phone,
+                keyboardType = KeyboardType.Phone,
+                imeAction = ImeAction.Next,
+                testTag = "register_phone_input"
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Password with visibility toggle
+            AuthTextField(
+                value = uiState.password,
+                onValueChange = { 
+                    viewModel.onPasswordChange(it)
+                    localErrorMessage.value = null
+                },
+                label = "Kata Sandi",
+                placeholder = "Minimal 6 karakter",
+                leadingIcon = Icons.Default.Lock,
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Next,
+                isPasswordVisible = passwordVisible.value,
+                onToggleVisibility = { passwordVisible.value = !passwordVisible.value },
+                visualTransformation = PasswordVisualTransformation(),
+                testTag = "register_password_input"
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Confirm Password with visibility toggle
+            AuthTextField(
+                value = uiState.confirmPassword,
+                onValueChange = { 
+                    viewModel.onConfirmPasswordChange(it)
+                    localErrorMessage.value = null
+                },
+                label = "Konfirmasi Kata Sandi",
+                placeholder = "Ulangi kata sandi",
+                leadingIcon = Icons.Default.Lock,
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done,
+                isPasswordVisible = confirmPasswordVisible.value,
+                onToggleVisibility = { confirmPasswordVisible.value = !confirmPasswordVisible.value },
+                visualTransformation = PasswordVisualTransformation(),
+                testTag = "register_confirm_password_input"
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Checkbox for terms
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                backgroundColor = SakuCreamSurface,
-                cornerRadius = 24.dp,
-                elevation = 3.dp
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    // Full Name
-                    OutlinedTextField(
-                        value = uiState.fullName,
-                        onValueChange = { viewModel.onFullNameChange(it) },
-                        label = { Text("Nama Lengkap") },
-                        placeholder = { Text("misal: Budi Santoso") },
-                        leadingIcon = {
-                            Icon(imageVector = Icons.Default.Person, contentDescription = null, tint = SakuDarkGreen)
-                        },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = SakuDarkGreen,
-                            unfocusedBorderColor = SakuCreamBorder,
-                            focusedLabelColor = SakuDarkGreen,
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = SakuCreamBackground
-                        ),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth().testTag("register_name_input")
+                Checkbox(
+                    checked = termsAccepted.value,
+                    onCheckedChange = { termsAccepted.value = it },
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = SakuDarkGreen,
+                        uncheckedColor = SakuCreamBorder
+                    ),
+                    modifier = Modifier.testTag("register_terms_checkbox")
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Saya menyetujui Syarat & Ketentuan",
+                    style = MaterialTheme.typography.bodyMedium.copy(color = SakuTextPrimary)
+                )
+            }
+
+            // Error from checkbox validation or viewModel
+            val errorToShow = localErrorMessage.value ?: uiState.errorMessage
+            if (errorToShow != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                AuthErrorText(
+                    errorMessage = errorToShow,
+                    testTag = "register_error_text"
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            AuthPrimaryButton(
+                text = "Buat Akun",
+                onClick = { 
+                    if (!termsAccepted.value) {
+                        localErrorMessage.value = "Centang persetujuan Syarat & Ketentuan terlebih dahulu."
+                    } else {
+                        localErrorMessage.value = null
+                        viewModel.register(onRegisterSuccess)
+                    }
+                },
+                isLoading = uiState.isLoading,
+                testTag = "register_submit_button"
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Divider
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                HorizontalDivider(
+                    modifier = Modifier.weight(1f),
+                    thickness = 1.dp,
+                    color = SakuCreamBorder
+                )
+                Text(
+                    text = "atau masuk dengan",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = SakuTextMuted,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+                HorizontalDivider(
+                    modifier = Modifier.weight(1f),
+                    thickness = 1.dp,
+                    color = SakuCreamBorder
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Social Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { /* TODO: Google Login */ },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .testTag("register_google_button"),
+                    border = BorderStroke(1.dp, SakuCreamBorder)
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_google),
+                        contentDescription = "Google",
+                        modifier = Modifier.size(20.dp)
                     )
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Email
-                    OutlinedTextField(
-                        value = uiState.email,
-                        onValueChange = { viewModel.onEmailChange(it) },
-                        label = { Text("Email") },
-                        placeholder = { Text("nama@email.com") },
-                        leadingIcon = {
-                            Icon(imageVector = Icons.Default.Email, contentDescription = null, tint = SakuDarkGreen)
-                        },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = SakuDarkGreen,
-                            unfocusedBorderColor = SakuCreamBorder,
-                            focusedLabelColor = SakuDarkGreen,
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = SakuCreamBackground
-                        ),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth().testTag("register_email_input")
-                    )
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Password
-                    OutlinedTextField(
-                        value = uiState.password,
-                        onValueChange = { viewModel.onPasswordChange(it) },
-                        label = { Text("Kata Sandi") },
-                        placeholder = { Text("Minimal 6 karakter") },
-                        leadingIcon = {
-                            Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = SakuDarkGreen)
-                        },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = SakuDarkGreen,
-                            unfocusedBorderColor = SakuCreamBorder,
-                            focusedLabelColor = SakuDarkGreen,
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = SakuCreamBackground
-                        ),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth().testTag("register_password_input")
-                    )
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Confirm Password
-                    OutlinedTextField(
-                        value = uiState.confirmPassword,
-                        onValueChange = { viewModel.onConfirmPasswordChange(it) },
-                        label = { Text("Konfirmasi Kata Sandi") },
-                        placeholder = { Text("Ulangi kata sandi") },
-                        leadingIcon = {
-                            Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = SakuDarkGreen)
-                        },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = SakuDarkGreen,
-                            unfocusedBorderColor = SakuCreamBorder,
-                            focusedLabelColor = SakuDarkGreen,
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = SakuCreamBackground
-                        ),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth().testTag("register_confirm_password_input")
-                    )
-
-                    if (uiState.errorMessage != null) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = uiState.errorMessage ?: "",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                color = SakuExpenseRed,
-                                fontWeight = FontWeight.Medium
-                            )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Google",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = SakuTextPrimary,
+                            fontWeight = FontWeight.Medium
                         )
-                    }
+                    )
+                }
 
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    Button(
-                        onClick = { viewModel.register(onRegisterSuccess) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = SakuDarkGreen,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
-                            .testTag("register_submit_button"),
-                        enabled = !uiState.isLoading
-                    ) {
-                        if (uiState.isLoading) {
-                            CircularProgressIndicator(
-                                color = Color.White,
-                                modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.5.dp
-                            )
-                        } else {
-                            Text(
-                                text = "Daftar Akun Baru",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
-                    }
+                OutlinedButton(
+                    onClick = { /* TODO: Facebook Login */ },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .testTag("register_facebook_button"),
+                    border = BorderStroke(1.dp, SakuCreamBorder)
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_facebook),
+                        contentDescription = "Facebook",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Facebook",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = SakuTextPrimary,
+                            fontWeight = FontWeight.Medium
+                        )
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Sudah punya akun?",
-                    style = MaterialTheme.typography.bodyMedium.copy(color = SakuTextSecondary)
-                )
-                TextButton(onClick = onNavigateBack) {
-                    Text(
-                        text = "Masuk di sini",
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            color = SakuDarkGreen,
-                            fontWeight = FontWeight.Bold
-                        )
-                    )
-                }
-            }
+            // Footer
+            AuthFooterLink(
+                prefixText = "Sudah punya akun?",
+                linkText = "Masuk",
+                onClick = onNavigateBack,
+                testTag = "register_login_link"
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Quote Card
+            AuthQuoteCard()
+
+            Spacer(modifier = Modifier.height(4.dp))
         }
     }
 }

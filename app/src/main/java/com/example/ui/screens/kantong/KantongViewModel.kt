@@ -3,6 +3,8 @@ package com.example.ui.screens.kantong
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.core.Formatters
+import com.example.domain.model.Asset
+import com.example.domain.model.AssetType
 import com.example.domain.model.Pocket
 import com.example.domain.model.PocketStats
 import com.example.domain.repository.SakuRepository
@@ -11,6 +13,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -19,7 +23,21 @@ enum class KantongViewMode {
     LIST
 }
 
+enum class AssetViewMode {
+    GRID,
+    LIST
+}
+
+enum class SakuPageTab {
+    KANTONG,
+    ASET
+}
+
 data class KantongUiState(
+    // Tab Navigation
+    val selectedTab: SakuPageTab = SakuPageTab.KANTONG,
+    
+    // Kantong View & Dialog States
     val isAddPocketDialogOpen: Boolean = false,
     val isEditPocketDialogOpen: Boolean = false,
     val editingPocketId: String? = null,
@@ -37,6 +55,24 @@ data class KantongUiState(
     val newPocketColorHex: String = "#133E35",
     val newPocketIcon: String = "savings",
     val viewMode: KantongViewMode = KantongViewMode.GRID,
+    
+    // Asset View & Dialog States
+    val assetViewMode: AssetViewMode = AssetViewMode.GRID,
+    val isAddAssetDialogOpen: Boolean = false,
+    val isEditAssetDialogOpen: Boolean = false,
+    val editingAssetId: String? = null,
+    val newAssetName: String = "",
+    val newAssetBalance: String = "",
+    val newAssetType: AssetType = AssetType.BANK,
+    val newAssetColorHex: String = "#133E35",
+    val newAssetIcon: String = "account_balance",
+    val editAssetName: String = "",
+    val editAssetBalance: String = "",
+    val editAssetType: AssetType = AssetType.BANK,
+    val editAssetColorHex: String = "#133E35",
+    val editAssetIcon: String = "account_balance",
+    
+    // Shared Message
     val errorMessage: String? = null
 )
 
@@ -52,6 +88,24 @@ class KantongViewModel(
 
     val pocketStats: StateFlow<List<PocketStats>> = repository.getPocketStats()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val assets: StateFlow<List<Asset>> = repository.getAllAssets()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val activeAssets: StateFlow<List<Asset>> = repository.getActiveAssets()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val totalAssetBalance: StateFlow<Double> = repository.getActiveAssets()
+        .map { list -> list.sumOf { it.balance } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    fun selectTab(tab: SakuPageTab) {
+        _uiState.value = _uiState.value.copy(selectedTab = tab, errorMessage = null)
+    }
+
+    fun setAssetViewMode(mode: AssetViewMode) {
+        _uiState.value = _uiState.value.copy(assetViewMode = mode)
+    }
 
     fun setViewMode(mode: KantongViewMode) {
         _uiState.value = _uiState.value.copy(viewMode = mode)
@@ -290,6 +344,206 @@ class KantongViewModel(
             if (pocket != null) {
                 val updated = pocket.copy(archived = archived)
                 repository.updatePocket(updated)
+            }
+        }
+    }
+
+    // --- Asset Operations ---
+
+    fun openAddAssetDialog() {
+        _uiState.value = _uiState.value.copy(
+            isAddAssetDialogOpen = true,
+            newAssetName = "",
+            newAssetBalance = "",
+            newAssetType = AssetType.BANK,
+            newAssetColorHex = "#133E35",
+            newAssetIcon = "account_balance",
+            errorMessage = null
+        )
+    }
+
+    fun closeAddAssetDialog() {
+        _uiState.value = _uiState.value.copy(
+            isAddAssetDialogOpen = false,
+            errorMessage = null
+        )
+    }
+
+    fun onNewAssetNameChange(name: String) {
+        _uiState.value = _uiState.value.copy(newAssetName = name, errorMessage = null)
+    }
+
+    fun onNewAssetBalanceChange(balance: String) {
+        _uiState.value = _uiState.value.copy(newAssetBalance = balance, errorMessage = null)
+    }
+
+    fun onNewAssetTypeChange(type: AssetType) {
+        val defaultIcon = when (type) {
+            AssetType.BANK -> "account_balance"
+            AssetType.E_WALLET -> "account_balance_wallet"
+            AssetType.CASH -> "payments"
+            AssetType.INVESTMENT -> "trending_up"
+            AssetType.CRYPTO -> "currency_exchange"
+            AssetType.OTHER -> "category"
+        }
+        _uiState.value = _uiState.value.copy(newAssetType = type, newAssetIcon = defaultIcon)
+    }
+
+    fun onNewAssetColorChange(colorHex: String) {
+        _uiState.value = _uiState.value.copy(newAssetColorHex = colorHex)
+    }
+
+    fun onNewAssetIconChange(iconName: String) {
+        _uiState.value = _uiState.value.copy(newAssetIcon = iconName)
+    }
+
+    fun saveNewAsset(): Job? {
+        val state = _uiState.value
+
+        if (state.newAssetName.isBlank()) {
+            _uiState.value = state.copy(errorMessage = "Nama aset wajib diisi")
+            return null
+        }
+
+        val trimmedBalance = state.newAssetBalance.trim()
+        val balance = if (trimmedBalance.isNotBlank()) {
+            val hasInvalidChars = trimmedBalance.any { !it.isDigit() && it != '.' && it != ',' && it != ' ' }
+            if (hasInvalidChars) {
+                _uiState.value = state.copy(errorMessage = "Saldo tidak valid")
+                return null
+            }
+            val parsed = Formatters.parseAmount(trimmedBalance)
+            if (parsed < 0) {
+                _uiState.value = state.copy(errorMessage = "Saldo awal tidak boleh negatif")
+                return null
+            }
+            parsed
+        } else {
+            0.0
+        }
+
+        val newAsset = Asset(
+            id = "asset_${System.currentTimeMillis()}",
+            name = state.newAssetName.trim(),
+            balance = balance,
+            type = state.newAssetType,
+            iconName = state.newAssetIcon,
+            colorHex = state.newAssetColorHex,
+            isDefault = false
+        )
+
+        return viewModelScope.launch {
+            try {
+                repository.insertAsset(newAsset)
+                closeAddAssetDialog()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(errorMessage = e.message ?: "Gagal menyimpan aset")
+            }
+        }
+    }
+
+    fun openEditAssetDialog(asset: Asset) {
+        _uiState.value = _uiState.value.copy(
+            isEditAssetDialogOpen = true,
+            editingAssetId = asset.id,
+            editAssetName = asset.name,
+            editAssetBalance = if (asset.balance > 0) asset.balance.toLong().toString() else "0",
+            editAssetType = asset.type,
+            editAssetColorHex = asset.colorHex,
+            editAssetIcon = asset.iconName,
+            errorMessage = null
+        )
+    }
+
+    fun closeEditAssetDialog() {
+        _uiState.value = _uiState.value.copy(
+            isEditAssetDialogOpen = false,
+            editingAssetId = null,
+            errorMessage = null
+        )
+    }
+
+    fun onEditAssetNameChange(name: String) {
+        _uiState.value = _uiState.value.copy(editAssetName = name, errorMessage = null)
+    }
+
+    fun onEditAssetBalanceChange(balance: String) {
+        _uiState.value = _uiState.value.copy(editAssetBalance = balance, errorMessage = null)
+    }
+
+    fun onEditAssetTypeChange(type: AssetType) {
+        val defaultIcon = when (type) {
+            AssetType.BANK -> "account_balance"
+            AssetType.E_WALLET -> "account_balance_wallet"
+            AssetType.CASH -> "payments"
+            AssetType.INVESTMENT -> "trending_up"
+            AssetType.CRYPTO -> "currency_exchange"
+            AssetType.OTHER -> "category"
+        }
+        _uiState.value = _uiState.value.copy(editAssetType = type, editAssetIcon = defaultIcon)
+    }
+
+    fun onEditAssetColorChange(colorHex: String) {
+        _uiState.value = _uiState.value.copy(editAssetColorHex = colorHex)
+    }
+
+    fun onEditAssetIconChange(iconName: String) {
+        _uiState.value = _uiState.value.copy(editAssetIcon = iconName)
+    }
+
+    fun saveEditAsset(): Job? {
+        val state = _uiState.value
+        val assetId = state.editingAssetId ?: return null
+
+        if (state.editAssetName.isBlank()) {
+            _uiState.value = state.copy(errorMessage = "Nama aset wajib diisi")
+            return null
+        }
+
+        val trimmedBalance = state.editAssetBalance.trim()
+        val balance = if (trimmedBalance.isNotBlank()) {
+            val hasInvalidChars = trimmedBalance.any { !it.isDigit() && it != '.' && it != ',' && it != ' ' }
+            if (hasInvalidChars) {
+                _uiState.value = state.copy(errorMessage = "Saldo tidak valid")
+                return null
+            }
+            val parsed = Formatters.parseAmount(trimmedBalance)
+            if (parsed < 0) {
+                _uiState.value = state.copy(errorMessage = "Saldo tidak boleh negatif")
+                return null
+            }
+            parsed
+        } else {
+            0.0
+        }
+
+        val existingAsset = assets.value.find { it.id == assetId }
+        val updatedAsset = Asset(
+            id = assetId,
+            name = state.editAssetName.trim(),
+            balance = balance,
+            type = state.editAssetType,
+            iconName = state.editAssetIcon,
+            colorHex = state.editAssetColorHex,
+            isDefault = existingAsset?.isDefault ?: false
+        )
+
+        return viewModelScope.launch {
+            try {
+                repository.updateAsset(updatedAsset)
+                closeEditAssetDialog()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(errorMessage = e.message ?: "Gagal memperbarui aset")
+            }
+        }
+    }
+
+    fun deleteAsset(assetId: String) {
+        viewModelScope.launch {
+            try {
+                repository.deleteAsset(assetId)
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(errorMessage = e.message ?: "Gagal menghapus aset")
             }
         }
     }

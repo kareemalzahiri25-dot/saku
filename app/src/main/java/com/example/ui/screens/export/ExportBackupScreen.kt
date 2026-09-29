@@ -167,7 +167,10 @@ fun ExportBackupScreen(
 
                             Button(
                                 onClick = { viewModel.exportToCsv() },
-                                colors = ButtonDefaults.buttonColors(containerColor = SakuDarkGreen),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = SakuDarkGreen,
+                                    contentColor = Color.White
+                                ),
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.fillMaxWidth().height(46.dp).testTag("export_csv_button"),
                                 enabled = !uiState.isExporting
@@ -230,7 +233,10 @@ fun ExportBackupScreen(
 
                             Button(
                                 onClick = { viewModel.exportToJson() },
-                                colors = ButtonDefaults.buttonColors(containerColor = SakuDarkGreen),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = SakuDarkGreen,
+                                    contentColor = Color.White
+                                ),
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.fillMaxWidth().height(46.dp).testTag("export_json_button"),
                                 enabled = !uiState.isExporting
