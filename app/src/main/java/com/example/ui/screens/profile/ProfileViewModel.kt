@@ -82,7 +82,8 @@ class ProfileViewModel(
         val existingKey = apiKeyConfigService.getGeminiApiKey() ?: ""
         _uiState.value = _uiState.value.copy(
             geminiApiKeyInput = existingKey,
-            isApiKeySaved = apiKeyConfigService.isGeminiConfigured()
+            isApiKeySaved = apiKeyConfigService.isGeminiConfigured(),
+            apiKeyVerificationStatus = apiKeyConfigService.getVerificationStatus()
         )
         viewModelScope.launch {
             summary.collect {
@@ -108,9 +109,11 @@ class ProfileViewModel(
 
     fun saveApiKey() {
         apiKeyConfigService.setGeminiApiKey(_uiState.value.geminiApiKeyInput)
+        apiKeyConfigService.setVerificationStatus(ApiKeyVerificationStatus.Unknown)
         _uiState.value = _uiState.value.copy(
             isApiKeyDialogOpen = false,
             isApiKeySaved = apiKeyConfigService.isGeminiConfigured(),
+            apiKeyVerificationStatus = ApiKeyVerificationStatus.Unknown,
             isSuccessMessage = "Kunci API berhasil disimpan"
         )
     }

@@ -1,5 +1,4 @@
-package com.example
-
+import com.example.data.service.ApiKeyConfigService
 import com.example.data.service.ReceiptItem
 import com.example.data.service.ReceiptScanException
 import com.example.data.service.ReceiptScannerService
@@ -16,6 +15,7 @@ import com.example.domain.model.ExpenseAllocation
 import com.example.domain.model.PocketAllocation
 import com.example.domain.model.PocketStats
 import com.example.domain.repository.SakuRepository
+import com.example.ui.screens.profile.ApiKeyVerificationStatus
 import com.example.ui.screens.transaction.ReceiptSource
 import com.example.ui.screens.transaction.ScanEngineMode
 import com.example.ui.screens.transaction.TransactionViewModel
@@ -52,7 +52,7 @@ class SakuReceiptScanningTest {
         private val samplePockets = listOf(
             Pocket("p1", "Kantong Utama", targetAmount = 500000.0, color = "#2E7D32", icon = "wallet")
         )
-        
+
         private val sampleAssets = mutableListOf<Asset>(
             Asset("a1", "Dompet Utama", 1000000.0, com.example.domain.model.AssetType.CASH, "wallet", "#2E7D32", false)
         )
@@ -112,7 +112,7 @@ class SakuReceiptScanningTest {
         override suspend fun exportDataAsJson(): String = ""
         override suspend fun restoreDataFromJson(json: String): Boolean = true
         override suspend fun resetToDefaultData() {}
-        
+
         override fun getAllAssets(): Flow<List<Asset>> = flowOf(sampleAssets)
         override fun getActiveAssets(): Flow<List<Asset>> = flowOf(sampleAssets.filter { !it.isDefault })
         override suspend fun getAssetById(id: String): Asset? = sampleAssets.find { it.id == id }
@@ -122,7 +122,7 @@ class SakuReceiptScanningTest {
             if (idx >= 0) sampleAssets[idx] = asset
         }
         override suspend fun deleteAsset(assetId: String) { sampleAssets.removeAll { it.id == assetId } }
-        
+
         override fun getActivePockets(): Flow<List<Pocket>> = flowOf(samplePockets.filter { it.isActive })
         override fun getPocketAllocations(): Flow<List<PocketAllocation>> = flowOf(emptyList())
         override fun getPocketAllocationsByAsset(assetId: String): Flow<List<PocketAllocation>> = flowOf(emptyList())
@@ -130,12 +130,25 @@ class SakuReceiptScanningTest {
         override suspend fun insertPocketAllocation(allocation: PocketAllocation) {}
         override suspend fun updatePocketAllocation(allocation: PocketAllocation) {}
         override suspend fun deletePocketAllocation(allocationId: String) {}
-        
+
         override fun getTransactionsByAsset(assetId: String): Flow<List<Transaction>> = flowOf(insertedTransactions.filter { it.assetId == assetId })
         override fun getExpenseAllocations(transactionId: String): Flow<List<ExpenseAllocation>> = flowOf(sampleExpenseAllocations.filter { it.transactionId == transactionId })
         override suspend fun insertExpenseAllocation(allocation: ExpenseAllocation) { sampleExpenseAllocations.add(allocation) }
         override suspend fun deleteExpenseAllocation(allocationId: String) { sampleExpenseAllocations.removeAll { it.id == allocationId } }
         override fun getPocketStats(): Flow<List<PocketStats>> = flowOf(emptyList())
+    }
+
+    private class FakeApiKeyConfigService(
+        var _verificationStatus: ApiKeyVerificationStatus = ApiKeyVerificationStatus.Unknown,
+        var hasApiKey: Boolean = true
+    ) : ApiKeyConfigService {
+        override fun getGeminiApiKey(): String? = if (hasApiKey) "fake-api-key" else null
+        override fun setGeminiApiKey(key: String) { hasApiKey = key.isNotBlank() }
+        override fun isGeminiConfigured(): Boolean = hasApiKey
+        override fun getVerificationStatus(): ApiKeyVerificationStatus = _verificationStatus
+        override fun setVerificationStatus(status: ApiKeyVerificationStatus) { _verificationStatus = status }
+        override fun getOcrApiKey(): String? = null
+        override fun setOcrApiKey(key: String) {}
     }
 
     private class FakeReceiptScannerService(
@@ -187,7 +200,8 @@ class SakuReceiptScanningTest {
     fun testSelectCameraSourceOpensMethodSheet() {
         val repo = FakeSakuRepository()
         val scanner = FakeReceiptScannerService()
-        val viewModel = TransactionViewModel(repo, scanner)
+        val apiKeyService = FakeApiKeyConfigService()
+        val viewModel = TransactionViewModel(repo, scanner, apiKeyService)
 
         viewModel.onSelectScanSource(ReceiptSource.CAMERA)
 
@@ -201,7 +215,8 @@ class SakuReceiptScanningTest {
     fun testSelectGallerySourceOpensMethodSheet() {
         val repo = FakeSakuRepository()
         val scanner = FakeReceiptScannerService()
-        val viewModel = TransactionViewModel(repo, scanner)
+        val apiKeyService = FakeApiKeyConfigService()
+        val viewModel = TransactionViewModel(repo, scanner, apiKeyService)
 
         viewModel.onSelectScanSource(ReceiptSource.GALLERY)
 
@@ -215,7 +230,8 @@ class SakuReceiptScanningTest {
     fun testSelectOcrMethodClosesSheetWithoutKeyRequirement() {
         val repo = FakeSakuRepository()
         val scanner = FakeReceiptScannerService(isAiConfiguredVal = false)
-        val viewModel = TransactionViewModel(repo, scanner)
+        val apiKeyService = FakeApiKeyConfigService(hasApiKey = false)
+        val viewModel = TransactionViewModel(repo, scanner, apiKeyService)
 
         viewModel.onSelectScanSource(ReceiptSource.CAMERA)
         val result = viewModel.onSelectScanMethod(ScanEngineMode.OCR)
@@ -231,7 +247,8 @@ class SakuReceiptScanningTest {
     fun testSelectAiMethodWithoutApiKeyShowsApiKeyMissingDialog() {
         val repo = FakeSakuRepository()
         val scanner = FakeReceiptScannerService(isAiConfiguredVal = false)
-        val viewModel = TransactionViewModel(repo, scanner)
+        val apiKeyService = FakeApiKeyConfigService(hasApiKey = false)
+        val viewModel = TransactionViewModel(repo, scanner, apiKeyService)
 
         viewModel.onSelectScanSource(ReceiptSource.CAMERA)
         val result = viewModel.onSelectScanMethod(ScanEngineMode.AI)
@@ -244,10 +261,111 @@ class SakuReceiptScanningTest {
     }
 
     @Test
+    fun testSelectAiMethodWithApiKeyButNotVerifiedShowsApiKeyMissingDialog() {
+        val repo = FakeSakuRepository()
+        val scanner = FakeReceiptScannerService(isAiConfiguredVal = true)
+        val apiKeyService = FakeApiKeyConfigService(
+            _verificationStatus = ApiKeyVerificationStatus.Unknown,
+            hasApiKey = true
+        )
+        val viewModel = TransactionViewModel(repo, scanner, apiKeyService)
+
+        viewModel.onSelectScanSource(ReceiptSource.CAMERA)
+        val result = viewModel.onSelectScanMethod(ScanEngineMode.AI)
+
+        assertFalse(result)
+        val state = viewModel.formState.value
+        assertEquals(ScanEngineMode.AI, state.scanMode)
+        assertFalse(state.isScanMethodSheetOpen)
+        assertTrue(state.isApiKeyMissingDialogOpen)
+    }
+
+    @Test
+    fun testSelectAiMethodWithInvalidKeyShowsApiKeyMissingDialog() {
+        val repo = FakeSakuRepository()
+        val scanner = FakeReceiptScannerService(isAiConfiguredVal = true)
+        val apiKeyService = FakeApiKeyConfigService(
+            _verificationStatus = ApiKeyVerificationStatus.Invalid,
+            hasApiKey = true
+        )
+        val viewModel = TransactionViewModel(repo, scanner, apiKeyService)
+
+        viewModel.onSelectScanSource(ReceiptSource.CAMERA)
+        val result = viewModel.onSelectScanMethod(ScanEngineMode.AI)
+
+        assertFalse(result)
+        val state = viewModel.formState.value
+        assertEquals(ScanEngineMode.AI, state.scanMode)
+        assertFalse(state.isScanMethodSheetOpen)
+        assertTrue(state.isApiKeyMissingDialogOpen)
+    }
+
+    @Test
+    fun testSelectAiMethodWithQuotaExceededShowsApiKeyMissingDialog() {
+        val repo = FakeSakuRepository()
+        val scanner = FakeReceiptScannerService(isAiConfiguredVal = true)
+        val apiKeyService = FakeApiKeyConfigService(
+            _verificationStatus = ApiKeyVerificationStatus.QuotaExceeded,
+            hasApiKey = true
+        )
+        val viewModel = TransactionViewModel(repo, scanner, apiKeyService)
+
+        viewModel.onSelectScanSource(ReceiptSource.CAMERA)
+        val result = viewModel.onSelectScanMethod(ScanEngineMode.AI)
+
+        assertFalse(result)
+        val state = viewModel.formState.value
+        assertEquals(ScanEngineMode.AI, state.scanMode)
+        assertFalse(state.isScanMethodSheetOpen)
+        assertTrue(state.isApiKeyMissingDialogOpen)
+    }
+
+    @Test
+    fun testSelectAiMethodWithNetworkErrorShowsApiKeyMissingDialog() {
+        val repo = FakeSakuRepository()
+        val scanner = FakeReceiptScannerService(isAiConfiguredVal = true)
+        val apiKeyService = FakeApiKeyConfigService(
+            _verificationStatus = ApiKeyVerificationStatus.NetworkError,
+            hasApiKey = true
+        )
+        val viewModel = TransactionViewModel(repo, scanner, apiKeyService)
+
+        viewModel.onSelectScanSource(ReceiptSource.CAMERA)
+        val result = viewModel.onSelectScanMethod(ScanEngineMode.AI)
+
+        assertFalse(result)
+        val state = viewModel.formState.value
+        assertEquals(ScanEngineMode.AI, state.scanMode)
+        assertFalse(state.isScanMethodSheetOpen)
+        assertTrue(state.isApiKeyMissingDialogOpen)
+    }
+
+    @Test
+    fun testSelectAiMethodWithVerifiedKeyAllowsProceed() {
+        val repo = FakeSakuRepository()
+        val scanner = FakeReceiptScannerService(isAiConfiguredVal = true)
+        val apiKeyService = FakeApiKeyConfigService(
+            _verificationStatus = ApiKeyVerificationStatus.Verified,
+            hasApiKey = true
+        )
+        val viewModel = TransactionViewModel(repo, scanner, apiKeyService)
+
+        viewModel.onSelectScanSource(ReceiptSource.CAMERA)
+        val result = viewModel.onSelectScanMethod(ScanEngineMode.AI)
+
+        assertTrue(result)
+        val state = viewModel.formState.value
+        assertEquals(ScanEngineMode.AI, state.scanMode)
+        assertFalse(state.isScanMethodSheetOpen)
+        assertFalse(state.isApiKeyMissingDialogOpen)
+    }
+
+    @Test
     fun testSwitchToOcrFromMissingKeyDialog() {
         val repo = FakeSakuRepository()
         val scanner = FakeReceiptScannerService(isAiConfiguredVal = false)
-        val viewModel = TransactionViewModel(repo, scanner)
+        val apiKeyService = FakeApiKeyConfigService(hasApiKey = false)
+        val viewModel = TransactionViewModel(repo, scanner, apiKeyService)
 
         viewModel.onSelectScanSource(ReceiptSource.GALLERY)
         viewModel.onSelectScanMethod(ScanEngineMode.AI)
@@ -264,7 +382,8 @@ class SakuReceiptScanningTest {
     fun testCameraPermissionDeniedOpensDialog() {
         val repo = FakeSakuRepository()
         val scanner = FakeReceiptScannerService()
-        val viewModel = TransactionViewModel(repo, scanner)
+        val apiKeyService = FakeApiKeyConfigService()
+        val viewModel = TransactionViewModel(repo, scanner, apiKeyService)
 
         viewModel.onCameraPermissionDenied()
 
@@ -277,7 +396,11 @@ class SakuReceiptScanningTest {
     fun testProcessingReceiptDoesNotAutoSaveAndOpensReviewDialog() = runTest(testDispatcher) {
         val repo = FakeSakuRepository()
         val scanner = FakeReceiptScannerService()
-        val viewModel = TransactionViewModel(repo, scanner)
+        val apiKeyService = FakeApiKeyConfigService(
+            _verificationStatus = ApiKeyVerificationStatus.Verified,
+            hasApiKey = true
+        )
+        val viewModel = TransactionViewModel(repo, scanner, apiKeyService)
 
         advanceUntilIdle()
 
@@ -299,7 +422,11 @@ class SakuReceiptScanningTest {
     fun testApplyScannedResultPopulatesFormForUserEditingAndSaving() = runTest(testDispatcher) {
         val repo = FakeSakuRepository()
         val scanner = FakeReceiptScannerService()
-        val viewModel = TransactionViewModel(repo, scanner)
+        val apiKeyService = FakeApiKeyConfigService(
+            _verificationStatus = ApiKeyVerificationStatus.Verified,
+            hasApiKey = true
+        )
+        val viewModel = TransactionViewModel(repo, scanner, apiKeyService)
 
         advanceUntilIdle()
 
@@ -337,7 +464,11 @@ class SakuReceiptScanningTest {
     fun testScanErrorHandling() = runTest(testDispatcher) {
         val repo = FakeSakuRepository()
         val scanner = FakeReceiptScannerService(shouldThrowError = true)
-        val viewModel = TransactionViewModel(repo, scanner)
+        val apiKeyService = FakeApiKeyConfigService(
+            _verificationStatus = ApiKeyVerificationStatus.Verified,
+            hasApiKey = true
+        )
+        val viewModel = TransactionViewModel(repo, scanner, apiKeyService)
 
         advanceUntilIdle()
 
@@ -352,5 +483,52 @@ class SakuReceiptScanningTest {
 
         viewModel.clearScanError()
         assertNull(viewModel.formState.value.scanErrorMessage)
+    }
+
+    @Test
+    fun testIsApiKeyVerifiedReturnsCorrectStatus() {
+        val repo = FakeSakuRepository()
+        val scanner = FakeReceiptScannerService()
+
+        // Test Unknown status
+        val apiKeyServiceUnknown = FakeApiKeyConfigService(_verificationStatus = ApiKeyVerificationStatus.Unknown)
+        val viewModelUnknown = TransactionViewModel(repo, scanner, apiKeyServiceUnknown)
+        assertFalse(viewModelUnknown.isApiKeyVerified())
+
+        // Test Verified status
+        val apiKeyServiceVerified = FakeApiKeyConfigService(_verificationStatus = ApiKeyVerificationStatus.Verified)
+        val viewModelVerified = TransactionViewModel(repo, scanner, apiKeyServiceVerified)
+        assertTrue(viewModelVerified.isApiKeyVerified())
+
+        // Test Invalid status
+        val apiKeyServiceInvalid = FakeApiKeyConfigService(_verificationStatus = ApiKeyVerificationStatus.Invalid)
+        val viewModelInvalid = TransactionViewModel(repo, scanner, apiKeyServiceInvalid)
+        assertFalse(viewModelInvalid.isApiKeyVerified())
+
+        // Test QuotaExceeded status
+        val apiKeyServiceQuota = FakeApiKeyConfigService(_verificationStatus = ApiKeyVerificationStatus.QuotaExceeded)
+        val viewModelQuota = TransactionViewModel(repo, scanner, apiKeyServiceQuota)
+        assertFalse(viewModelQuota.isApiKeyVerified())
+
+        // Test NetworkError status
+        val apiKeyServiceNetwork = FakeApiKeyConfigService(_verificationStatus = ApiKeyVerificationStatus.NetworkError)
+        val viewModelNetwork = TransactionViewModel(repo, scanner, apiKeyServiceNetwork)
+        assertFalse(viewModelNetwork.isApiKeyVerified())
+    }
+
+    @Test
+    fun testIsAiConfiguredReturnsCorrectStatus() {
+        val repo = FakeSakuRepository()
+        val apiKeyService = FakeApiKeyConfigService()
+
+        // AI configured
+        val scannerConfigured = FakeReceiptScannerService(isAiConfiguredVal = true)
+        val viewModelConfigured = TransactionViewModel(repo, scannerConfigured, apiKeyService)
+        assertTrue(viewModelConfigured.isAiConfigured())
+
+        // AI not configured
+        val scannerNotConfigured = FakeReceiptScannerService(isAiConfiguredVal = false)
+        val viewModelNotConfigured = TransactionViewModel(repo, scannerNotConfigured, apiKeyService)
+        assertFalse(viewModelNotConfigured.isAiConfigured())
     }
 }

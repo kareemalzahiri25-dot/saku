@@ -2,6 +2,7 @@ package com.example.data.service
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.ui.screens.profile.ApiKeyVerificationStatus
 
 /**
  * Layanan Konfigurasi Kunci API (API-Key Configuration)
@@ -11,6 +12,8 @@ interface ApiKeyConfigService {
     fun getGeminiApiKey(): String?
     fun setGeminiApiKey(key: String)
     fun isGeminiConfigured(): Boolean
+    fun getVerificationStatus(): ApiKeyVerificationStatus
+    fun setVerificationStatus(status: ApiKeyVerificationStatus)
     fun getOcrApiKey(): String?
     fun setOcrApiKey(key: String)
 }
@@ -22,6 +25,7 @@ class DefaultApiKeyConfigService(context: Context) : ApiKeyConfigService {
     companion object {
         private const val KEY_GEMINI_API = "gemini_api_key"
         private const val KEY_OCR_API = "ocr_api_key"
+        private const val KEY_VERIFICATION_STATUS = "verification_status"
     }
 
     override fun getGeminiApiKey(): String? {
@@ -35,6 +39,15 @@ class DefaultApiKeyConfigService(context: Context) : ApiKeyConfigService {
 
     override fun isGeminiConfigured(): Boolean {
         return !getGeminiApiKey().isNullOrBlank()
+    }
+
+    override fun getVerificationStatus(): ApiKeyVerificationStatus {
+        val stored = prefs.getString(KEY_VERIFICATION_STATUS, null)
+        return stored?.let { ApiKeyVerificationStatus.valueOf(it) } ?: ApiKeyVerificationStatus.Unknown
+    }
+
+    override fun setVerificationStatus(status: ApiKeyVerificationStatus) {
+        prefs.edit().putString(KEY_VERIFICATION_STATUS, status.name).apply()
     }
 
     override fun getOcrApiKey(): String? {

@@ -143,7 +143,7 @@ fun SakuNavHost(
 
             composable(Screen.AddTransaction.route) {
                 val txVm = viewModel {
-                    TransactionViewModel(container.repository, container.receiptScannerService)
+                    TransactionViewModel(container.repository, container.receiptScannerService, container.apiKeyConfigService)
                 }
                 AddTransactionScreen(
                     viewModel = txVm,

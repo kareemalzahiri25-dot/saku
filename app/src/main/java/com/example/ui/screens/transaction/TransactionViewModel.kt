@@ -5,12 +5,15 @@ import androidx.lifecycle.viewModelScope
 import com.example.core.Formatters
 import com.example.data.service.ReceiptScannerService
 import com.example.data.service.ScannedReceiptResult
+import com.example.data.service.ApiKeyConfigService
 import com.example.domain.model.Category
 import com.example.domain.model.Pocket
 import com.example.domain.model.Transaction
 import com.example.domain.model.Asset
 import com.example.domain.model.TransactionType
 import com.example.domain.repository.SakuRepository
+import com.example.ui.screens.profile.ApiKeyVerificationStatus
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -62,13 +65,16 @@ data class TransactionFormState(
     val isSavedSuccess: Boolean = false,
     // Receipt section state
     val isScanSectionExpanded: Boolean = false,
+    // API Key verification status for AI Scan gating
+    val apiKeyVerificationStatus: ApiKeyVerificationStatus = ApiKeyVerificationStatus.Unknown,
     // Backward compatibility
     val isScanningSheetOpen: Boolean = false
 )
 
 class TransactionViewModel(
     private val repository: SakuRepository,
-    private val receiptScannerService: ReceiptScannerService
+    private val receiptScannerService: ReceiptScannerService,
+    private val apiKeyConfigService: ApiKeyConfigService
 ) : ViewModel() {
 
     private val _formState = MutableStateFlow(TransactionFormState())
@@ -119,6 +125,15 @@ class TransactionViewModel(
                         _selectedAssetId.value = defaultAsset.id
                     }
                 }
+            }
+        }
+        // Observe API Key verification status for AI Scan gating
+        viewModelScope.launch {
+            while (true) {
+                _formState.value = _formState.value.copy(
+                    apiKeyVerificationStatus = apiKeyConfigService.getVerificationStatus()
+                )
+                delay(1000) // Poll every second
             }
         }
     }
@@ -185,19 +200,24 @@ class TransactionViewModel(
 
     fun onSelectScanMethod(mode: ScanEngineMode): Boolean {
         _formState.value = _formState.value.copy(scanMode = mode)
-        if (mode == ScanEngineMode.AI && !isAiConfigured()) {
-            _formState.value = _formState.value.copy(
-                isScanMethodSheetOpen = false,
-                isApiKeyMissingDialogOpen = true
-            )
-            return false
-        }
-        if (mode == ScanEngineMode.AI && !isApiKeyVerified()) {
-            _formState.value = _formState.value.copy(
-                isScanMethodSheetOpen = false,
-                isApiKeyMissingDialogOpen = true
-            )
-            return false
+        if (mode == ScanEngineMode.AI) {
+            val verificationStatus = apiKeyConfigService.getVerificationStatus()
+            if (!receiptScannerService.isAiScannerConfigured()) {
+                // No API key at all
+                _formState.value = _formState.value.copy(
+                    isScanMethodSheetOpen = false,
+                    isApiKeyMissingDialogOpen = true
+                )
+                return false
+            }
+            if (verificationStatus != ApiKeyVerificationStatus.Verified) {
+                // API key exists but not verified
+                _formState.value = _formState.value.copy(
+                    isScanMethodSheetOpen = false,
+                    isApiKeyMissingDialogOpen = true
+                )
+                return false
+            }
         }
         _formState.value = _formState.value.copy(isScanMethodSheetOpen = false)
         return true
@@ -208,7 +228,7 @@ class TransactionViewModel(
     }
 
     fun isApiKeyVerified(): Boolean {
-        return receiptScannerService.isAiScannerConfigured()
+        return apiKeyConfigService.getVerificationStatus() == ApiKeyVerificationStatus.Verified
     }
 
     fun dismissScanMethodSheet() {

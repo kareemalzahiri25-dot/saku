@@ -37,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Warning
@@ -87,6 +88,7 @@ import com.example.domain.model.Asset
 import com.example.ui.components.SakuCard
 import com.example.ui.components.SakuTopBar
 import com.example.ui.components.getCategoryIconVector
+import com.example.ui.screens.profile.ApiKeyVerificationStatus
 import com.example.ui.theme.SakuCreamBackground
 import com.example.ui.theme.SakuCreamBorder
 import com.example.ui.theme.SakuCreamSurface
@@ -972,16 +974,23 @@ fun AddTransactionScreen(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     // Pilihan 2: AI Scan
+                    val aiVerificationStatus = formState.apiKeyVerificationStatus
+                    val isAiEnabled = viewModel.isAiConfigured() && aiVerificationStatus == ApiKeyVerificationStatus.Verified
                     Surface(
                         onClick = {
-                            val ready = viewModel.onSelectScanMethod(ScanEngineMode.AI)
-                            if (ready) {
-                                proceedWithChosenSource()
+                            if (isAiEnabled) {
+                                val ready = viewModel.onSelectScanMethod(ScanEngineMode.AI)
+                                if (ready) {
+                                    proceedWithChosenSource()
+                                }
                             }
                         },
                         shape = RoundedCornerShape(16.dp),
-                        color = SakuGoldLight,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, SakuGoldAccent.copy(alpha = 0.5f)),
+                        color = if (isAiEnabled) SakuGoldLight else SakuCreamSurface.copy(alpha = 0.6f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isAiEnabled) SakuGoldAccent.copy(alpha = 0.5f) else SakuCreamBorder.copy(alpha = 0.5f)
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("method_ai_option")
@@ -994,13 +1003,13 @@ fun AddTransactionScreen(
                                 modifier = Modifier
                                     .size(46.dp)
                                     .clip(CircleShape)
-                                    .background(SakuGoldAccent),
+                                    .background(if (isAiEnabled) SakuGoldAccent else SakuTextMuted.copy(alpha = 0.5f)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.CheckCircle,
-                                    contentDescription = null,
-                                    tint = Color.White,
+                                    imageVector = if (isAiEnabled) Icons.Filled.CheckCircle else Icons.Default.Lock,
+                                    contentDescription = if (isAiEnabled) null else "AI Scan terkunci",
+                                    tint = if (isAiEnabled) Color.White else SakuTextMuted,
                                     modifier = Modifier.size(24.dp)
                                 )
                             }
@@ -1011,28 +1020,50 @@ fun AddTransactionScreen(
                                         text = "AI Scan",
                                         style = MaterialTheme.typography.titleMedium.copy(
                                             fontWeight = FontWeight.Bold,
-                                            color = SakuDarkGreen
+                                            color = if (isAiEnabled) SakuDarkGreen else SakuTextMuted
                                         )
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = SakuGoldAccent
-                                    ) {
-                                        Text(
-                                            text = "Gemini Vision AI",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White
-                                            ),
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
+                                    if (!isAiEnabled) {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = SakuTextMuted.copy(alpha = 0.15f)
+                                        ) {
+                                            Text(
+                                                text = "Memerlukan API Key",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = SakuTextMuted
+                                                ),
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    } else {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = SakuGoldAccent
+                                        ) {
+                                            Text(
+                                                text = "Gemini Vision AI",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White
+                                                ),
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
                                     }
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Analisis gambar struk menggunakan AI Gemini. Ekstraksi otomatis merchant, total nominal, tanggal, kategori, dan rincian transaksi.",
+                                    text = if (isAiEnabled)
+                                        "Analisis gambar struk menggunakan AI Gemini. Ekstraksi otomatis merchant, total nominal, tanggal, kategori, dan rincian transaksi."
+                                    else if (!viewModel.isAiConfigured())
+                                        "API Key Gemini belum dikonfigurasi. Atur di menu Profil untuk menggunakan AI Scan."
+                                    else
+                                        "API Key Gemini belum diverifikasi. Verifikasi di menu Profil untuk mengaktifkan AI Scan.",
                                     style = MaterialTheme.typography.bodySmall.copy(
                                         color = SakuTextSecondary,
                                         lineHeight = 16.sp

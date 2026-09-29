@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
+import com.example.ui.screens.profile.ApiKeyVerificationStatus
 
 /**
  * Secure API Key Configuration Service using EncryptedSharedPreferences backed by Android Keystore.
@@ -49,11 +50,21 @@ class EncryptedApiKeyConfigService(context: Context) : ApiKeyConfigService {
                 prefs.edit().putString("ocr_api_key", legacyOcr.trim()).apply()
             }
         }
+
+        // Migrate verification status if exists in legacy and not in encrypted
+        val legacyStatus = legacyPrefs.getString("verification_status", null)
+        if (!legacyStatus.isNullOrBlank()) {
+            val currentEncrypted = prefs.getString("verification_status", null)
+            if (currentEncrypted.isNullOrBlank()) {
+                prefs.edit().putString("verification_status", legacyStatus.trim()).apply()
+            }
+        }
     }
 
     companion object {
         private const val KEY_GEMINI_API = "gemini_api_key"
         private const val KEY_OCR_API = "ocr_api_key"
+        private const val KEY_VERIFICATION_STATUS = "verification_status"
     }
 
     override fun getGeminiApiKey(): String? {
@@ -69,6 +80,17 @@ class EncryptedApiKeyConfigService(context: Context) : ApiKeyConfigService {
 
     override fun isGeminiConfigured(): Boolean {
         return !getGeminiApiKey().isNullOrBlank()
+    }
+
+    override fun getVerificationStatus(): ApiKeyVerificationStatus {
+        ensureMigration()
+        val stored = prefs.getString(KEY_VERIFICATION_STATUS, null)
+        return stored?.let { ApiKeyVerificationStatus.valueOf(it) } ?: ApiKeyVerificationStatus.Unknown
+    }
+
+    override fun setVerificationStatus(status: ApiKeyVerificationStatus) {
+        ensureMigration()
+        prefs.edit().putString(KEY_VERIFICATION_STATUS, status.name).apply()
     }
 
     override fun getOcrApiKey(): String? {

@@ -251,7 +251,7 @@ fun InformasiPribadiScreen(
             ApiKeyConfigurationSection(
                 uiState = uiState,
                 onApiKeyChange = { viewModel.onApiKeyChange(it) },
-                onVerify = { showSnackbar("Verifikasi API Key") },
+                onVerify = { viewModel.verifyApiKey() },
                 onSave = { viewModel.saveApiKey() },
                 onShowSnackbar = { showSnackbar(it) }
             )
