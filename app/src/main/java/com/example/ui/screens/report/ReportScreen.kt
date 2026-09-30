@@ -9,11 +9,14 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -56,6 +59,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
@@ -95,6 +99,7 @@ import com.example.ui.theme.SakuTextPrimary
 import com.example.ui.theme.SakuTextSecondary
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -148,10 +153,19 @@ fun ReportScreen(
 
             // 5. Pengeluaran Berdasarkan Kategori (Donut Chart)
             item {
+                val selectedCat by viewModel.selectedCategory.collectAsStateWithLifecycle()
                 CategoryDonutSection(
                     segments = uiState.donutSegments,
                     categoryBreakdown = uiState.categoryBreakdown,
-                    totalExpense = uiState.totalExpense
+                    totalExpense = uiState.totalExpense,
+                    selectedCategory = selectedCat,
+                    onCategoryTap = { segment ->
+                        if (selectedCat == segment) {
+                            viewModel.clearSelection()
+                        } else {
+                            viewModel.selectCategory(segment)
+                        }
+                    }
                 )
             }
 
@@ -208,44 +222,6 @@ fun PeriodFilterSection(
         elevation = 2.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Header label + periode aktif
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(SakuLightGreen, RoundedCornerShape(10.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CalendarMonth,
-                            contentDescription = null,
-                            tint = SakuDarkGreen,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            text = "Filter Periode",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = SakuTextMuted
-                        )
-                        Text(
-                            text = periodTitle,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = SakuDarkGreen
-                        )
-                    }
-                }
-            }
-
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
@@ -459,9 +435,7 @@ fun SummaryMetricCard(
                 Text(
                     text = Formatters.formatRupiah(amount),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = SakuTextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    color = SakuTextPrimary
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 if (isIncome != null) {
@@ -576,7 +550,7 @@ fun CashflowLineChartSection(points: List<CashflowPoint>) {
                 }
 
                 // Line Chart Canvas
-                val maxVal = max(1.0, points.maxOf { max(it.income, it.expense) })
+                val maxVal = if (points.isNotEmpty()) max(1.0, points.maxOf { max(it.income, it.expense) }) else 1.0
                 val pointsCount = points.size
 
                 Box(
@@ -584,6 +558,31 @@ fun CashflowLineChartSection(points: List<CashflowPoint>) {
                         .fillMaxWidth()
                         .height(180.dp)
                 ) {
+                    // Y-axis labels (left side)
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .fillMaxHeight()
+                            .padding(start = 4.dp, top = 20.dp, bottom = 20.dp),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = Formatters.formatRupiah(maxVal),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SakuTextMuted
+                        )
+                        Text(
+                            text = Formatters.formatRupiah(maxVal / 2),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SakuTextMuted
+                        )
+                        Text(
+                            text = "Rp 0",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SakuTextMuted
+                        )
+                    }
+
                     Canvas(
                         modifier = Modifier
                             .fillMaxSize()
@@ -713,7 +712,9 @@ fun CashflowLineChartSection(points: List<CashflowPoint>) {
 fun CategoryDonutSection(
     segments: List<DonutCategorySegment>,
     categoryBreakdown: List<CategoryExpenseSummary>,
-    totalExpense: Double
+    totalExpense: Double,
+    selectedCategory: DonutCategorySegment? = null,
+    onCategoryTap: (DonutCategorySegment) -> Unit = {}
 ) {
     var showAllCategories by remember { mutableStateOf(false) }
 
@@ -745,7 +746,37 @@ fun CategoryDonutSection(
                         .height(180.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Canvas(modifier = Modifier.size(160.dp)) {
+                    Canvas(
+                        modifier = Modifier
+                            .size(160.dp)
+                            .pointerInput(segments) {
+                                detectTapGestures { offset ->
+                                    val centerX = size.width / 2f
+                                    val centerY = size.height / 2f
+                                    val dx = offset.x - centerX
+                                    val dy = offset.y - centerY
+                                    val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+                                    val strokeWidth = 28.dp.toPx()
+                                    val outerRadius = kotlin.math.min(size.width, size.height) / 2f
+                                    val innerRadius = outerRadius - strokeWidth
+                                    
+                                    if (distance in innerRadius..outerRadius) {
+                                        var angle = Math.toDegrees(kotlin.math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                                        angle = (angle + 90f + 360f) % 360f
+                                        
+                                        var startAngle = 0f
+                                        for (seg in segments) {
+                                            val sweepAngle = (seg.percentage * 360f).coerceAtLeast(1.5f)
+                                            if (angle >= startAngle && angle < startAngle + sweepAngle) {
+                                                onCategoryTap(seg)
+                                                break
+                                            }
+                                            startAngle += sweepAngle
+                                        }
+                                    }
+                                }
+                            }
+                    ) {
                         val strokeWidth = 28.dp.toPx()
                         val arcRadius = (size.minDimension - strokeWidth) / 2f
                         val center = Offset(size.width / 2f, size.height / 2f)
@@ -760,9 +791,12 @@ fun CategoryDonutSection(
                             } catch (e: Exception) {
                                 SakuDarkGreen
                             }
+                            
+                            val isSelected = selectedCategory == null || selectedCategory == seg
+                            val alpha = if (isSelected) 1f else 0.35f
 
                             drawArc(
-                                color = color,
+                                color = color.copy(alpha = alpha),
                                 startAngle = startAngle,
                                 sweepAngle = sweepAngle - 1f, // small gap
                                 useCenter = false,
@@ -794,6 +828,46 @@ fun CategoryDonutSection(
                     }
                 }
 
+                // Kartu detail kategori terpilih (tepat di bawah donat)
+                selectedCategory?.let { sel ->
+                    SakuCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onCategoryTap(sel) }, // tap lagi = tutup
+                        backgroundColor = SakuDarkGreen,
+                        cornerRadius = 12.dp,
+                        elevation = 0.dp
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = getCategoryIconVector(sel.categoryIcon),
+                                contentDescription = null,
+                                tint = SakuCreamSurface,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = sel.categoryName,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = SakuCreamSurface,
+                                    maxLines = 2
+                                )
+                                Text(
+                                    text = "${Formatters.formatRupiah(sel.amount)} • ${(sel.percentage * 100).roundToInt()}% • ${sel.transactionCount} transaksi",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = SakuCreamSurface.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Category List Items (Top 5 default, expand for all)
                 val displayList = if (showAllCategories) categoryBreakdown else categoryBreakdown.take(5)
 
@@ -804,12 +878,21 @@ fun CategoryDonutSection(
                         } catch (e: Exception) {
                             SakuDarkGreen
                         }
+                        val isSelected = selectedCategory == null || selectedCategory.categoryName == cat.categoryName
+                        val alpha = if (isSelected) 1f else 0.35f
                         CategoryProgressRow(
                             name = cat.categoryName,
                             icon = cat.categoryIcon,
                             amount = cat.totalAmount,
                             percentage = cat.percentage,
-                            indicatorColor = color
+                            indicatorColor = color,
+                            alpha = alpha,
+                            onClick = {
+                                val target = segments.find { it.categoryName == cat.categoryName }
+                                if (target != null) {
+                                    onCategoryTap(target)
+                                }
+                            }
                         )
                     }
                 }
@@ -844,11 +927,16 @@ fun CategoryProgressRow(
     icon: String,
     amount: Double,
     percentage: Float,
-    indicatorColor: Color
+    indicatorColor: Color,
+    alpha: Float = 1f,
+    onClick: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .alpha(alpha),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -885,7 +973,7 @@ fun CategoryProgressRow(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "${(percentage * 100).toInt()}%",
+                    text = "${(percentage * 100).roundToInt()}%",
                     style = MaterialTheme.typography.labelSmall,
                     color = SakuTextMuted,
                     modifier = Modifier.width(36.dp),
@@ -979,8 +1067,8 @@ fun BalanceTrendSection(points: List<BalancePoint>) {
                 }
 
                 // Balance Line Chart Canvas
-                val minVal = points.minOf { it.balance }
-                val maxVal = points.maxOf { it.balance }
+                val minVal = if (points.isNotEmpty()) points.minOf { it.balance } else 0.0
+                val maxVal = if (points.isNotEmpty()) points.maxOf { it.balance } else 1.0
                 val range = max(1.0, maxVal - minVal)
                 val pointsCount = points.size
 
@@ -989,6 +1077,26 @@ fun BalanceTrendSection(points: List<BalancePoint>) {
                         .fillMaxWidth()
                         .height(160.dp)
                 ) {
+                    // Y-axis labels (left side)
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .fillMaxHeight()
+                            .padding(start = 4.dp, top = 16.dp, bottom = 16.dp),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = Formatters.formatRupiah(maxVal),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SakuTextMuted
+                        )
+                        Text(
+                            text = Formatters.formatRupiah(minVal),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SakuTextMuted
+                        )
+                    }
+
                     Canvas(
                         modifier = Modifier
                             .fillMaxSize()
@@ -1080,21 +1188,23 @@ fun BalanceTrendSection(points: List<BalancePoint>) {
                 }
 
                 // X-Axis labels
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = points.first().label,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = SakuTextMuted
-                    )
-                    Text(
-                        text = points.last().label,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = SakuTextMuted
-                    )
-                }
+                                if (points.isNotEmpty()) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = points.first().label,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = SakuTextMuted
+                                        )
+                                        Text(
+                                            text = points.last().label,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = SakuTextMuted
+                                        )
+                                    }
+                                }
             }
         }
     }
@@ -1103,7 +1213,7 @@ fun BalanceTrendSection(points: List<BalancePoint>) {
 // ============================================================
 // 7. Transaksi Terbesar (Top 5 / 10 / 20)
 // ============================================================
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TopTransactionsSection(
     transactions: List<TopTransactionItem>,
@@ -1130,11 +1240,13 @@ fun TopTransactionsSection(
                 color = SakuDarkGreen
             )
 
-            // Filter Row 1: Limit Filter (Top 5 / 10 / 20)
-            Row(
+            // Consolidated filter chips (limit + type)
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Limit filters (Top 5 / 10 / 20)
                 TopTransactionFilter.entries.forEach { filter ->
                     val isSelected = currentFilter == filter
                     FilterChip(
@@ -1162,13 +1274,8 @@ fun TopTransactionsSection(
                         )
                     )
                 }
-            }
 
-            // Filter Row 2: Type Filter (Semua / Pemasukan / Pengeluaran)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+                // Type filters (Semua / Pemasukan / Pengeluaran)
                 TransactionTypeFilter.entries.forEach { typeFilter ->
                     val isSelected = currentTypeFilter == typeFilter
                     FilterChip(
@@ -1183,17 +1290,17 @@ fun TopTransactionsSection(
                             )
                         },
                         colors = FilterChipDefaults.filterChipColors(
-                                                    selectedContainerColor = SakuDarkGreen,
-                                                    selectedLabelColor = Color.White,
-                                                    containerColor = SakuCreamBackground,
-                                                    labelColor = SakuTextSecondary
-                                                ),
-                                                border = FilterChipDefaults.filterChipBorder(
-                                                    borderColor = SakuCreamBorder,
-                                                    selectedBorderColor = SakuDarkGreen,
-                                                    enabled = true,
-                                                    selected = isSelected
-                                                )
+                            selectedContainerColor = SakuDarkGreen,
+                            selectedLabelColor = Color.White,
+                            containerColor = SakuCreamBackground,
+                            labelColor = SakuTextSecondary
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            borderColor = SakuCreamBorder,
+                            selectedBorderColor = SakuDarkGreen,
+                            enabled = true,
+                            selected = isSelected
+                        )
                     )
                 }
             }
@@ -1205,7 +1312,6 @@ fun TopTransactionsSection(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     transactions.forEachIndexed { index, tx ->
                         TopTransactionItemRow(
-                            rank = index + 1,
                             item = tx
                         )
                     }
@@ -1217,7 +1323,6 @@ fun TopTransactionsSection(
 
 @Composable
 fun TopTransactionItemRow(
-    rank: Int,
     item: TopTransactionItem
 ) {
     val isIncome = item.type == TransactionType.INCOME
@@ -1234,25 +1339,6 @@ fun TopTransactionItemRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
         ) {
-            // Rank badge
-            Box(
-                modifier = Modifier
-                    .size(24.dp)
-                    .background(
-                        if (rank <= 3) SakuGoldAccent.copy(alpha = 0.2f) else SakuCreamBorder.copy(alpha = 0.5f),
-                        CircleShape
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "$rank",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = if (rank <= 3) SakuDarkGreen else SakuTextMuted
-                    )
-                )
-            }
-            Spacer(modifier = Modifier.width(10.dp))
             // Icon
             Box(
                 modifier = Modifier

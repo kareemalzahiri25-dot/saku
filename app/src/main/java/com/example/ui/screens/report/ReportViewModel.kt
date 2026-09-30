@@ -123,6 +123,7 @@ data class DonutCategorySegment(
     val amount: Double,
     val percentage: Float,
     val colorHex: String,
+    val transactionCount: Int,
     val isOther: Boolean = false
 )
 
@@ -150,9 +151,11 @@ class ReportViewModel(
     private val _customEndMillis = MutableStateFlow(0L)
     private val _topTransactionFilter = MutableStateFlow(TopTransactionFilter.TOP_5)
     private val _transactionTypeFilter = MutableStateFlow(TransactionTypeFilter.ALL)
+    private val _selectedCategory = MutableStateFlow<DonutCategorySegment?>(null)
 
     val topTransactionFilter: StateFlow<TopTransactionFilter> = _topTransactionFilter.asStateFlow()
     val transactionTypeFilter: StateFlow<TransactionTypeFilter> = _transactionTypeFilter.asStateFlow()
+    val selectedCategory: StateFlow<DonutCategorySegment?> = _selectedCategory.asStateFlow()
 
     private data class FilterState(
         val period: ReportPeriod,
@@ -214,6 +217,14 @@ class ReportViewModel(
 
     fun setTransactionTypeFilter(filter: TransactionTypeFilter) {
         _transactionTypeFilter.value = filter
+    }
+
+    fun selectCategory(segment: DonutCategorySegment) {
+        _selectedCategory.value = segment
+    }
+
+    fun clearSelection() {
+        _selectedCategory.value = null
     }
 
     // Backward compatibility for existing tests
@@ -365,9 +376,11 @@ class ReportViewModel(
         // Category breakdown for donut
         val categoryExpenses = mutableMapOf<String, Double>()
         val categoryIcons = mutableMapOf<String, String>()
+        val categoryCounts = mutableMapOf<String, Int>()
         periodTransactions.filter { it.type == TransactionType.EXPENSE }.forEach { tx ->
             categoryExpenses[tx.categoryName] = (categoryExpenses[tx.categoryName] ?: 0.0) + tx.amount
             categoryIcons[tx.categoryName] = tx.categoryIcon
+            categoryCounts[tx.categoryName] = (categoryCounts[tx.categoryName] ?: 0) + 1
         }
 
         val categoryBreakdown = categoryExpenses.map { (name, amount) ->
@@ -393,6 +406,7 @@ class ReportViewModel(
                         amount = cat.totalAmount,
                         percentage = cat.percentage,
                         colorHex = color,
+                        transactionCount = categoryCounts[cat.categoryName] ?: 0,
                         isOther = false
                     )
                 )
@@ -408,12 +422,14 @@ class ReportViewModel(
                         amount = cat.totalAmount,
                         percentage = cat.percentage,
                         colorHex = color,
+                        transactionCount = categoryCounts[cat.categoryName] ?: 0,
                         isOther = false
                     )
                 )
             }
             val others = categoryBreakdown.drop(5)
             val othersTotal = others.sumOf { it.totalAmount }
+            val othersCount = others.sumOf { categoryCounts[it.categoryName] ?: 0 }
             val othersPct = if (totalExpense > 0.0) (othersTotal / totalExpense).toFloat() else 0f
             donutSegments.add(
                 DonutCategorySegment(
@@ -422,6 +438,7 @@ class ReportViewModel(
                     amount = othersTotal,
                     percentage = othersPct,
                     colorHex = "#64748B",
+                    transactionCount = othersCount,
                     isOther = true
                 )
             )
