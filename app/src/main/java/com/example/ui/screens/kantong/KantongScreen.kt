@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -874,32 +875,35 @@ fun KantongScreen(
                     }
                 }
 
-                // Content: 2-Column Compact Grid OR Detailed List Cards for Assets
+                // Content: Adaptive Grid OR Detailed List Cards for Assets
                 if (uiState.assetViewMode == AssetViewMode.GRID) {
-                    val chunkedAssets = assets.chunked(2)
-                    items(chunkedAssets) { rowAssets ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            AssetCompactGridCard(
-                                asset = rowAssets[0],
-                                planning = assetPlanning[rowAssets[0].id] ?: 0.0,
-                                modifier = Modifier.weight(1f),
-                                onEdit = { viewModel.openEditAssetDialog(rowAssets[0]) },
-                                onTransfer = { viewModel.openTransferSheet(rowAssets[0]) }
-                            )
-
-                            if (rowAssets.size > 1) {
-                                AssetCompactGridCard(
-                                    asset = rowAssets[1],
-                                    planning = assetPlanning[rowAssets[1].id] ?: 0.0,
-                                    modifier = Modifier.weight(1f),
-                                    onEdit = { viewModel.openEditAssetDialog(rowAssets[1]) },
-                                    onTransfer = { viewModel.openTransferSheet(rowAssets[1]) }
-                                )
-                            } else {
-                                Spacer(modifier = Modifier.weight(1f))
+                    item {
+                        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                            val columns = maxOf(2, (maxWidth / 160.dp).toInt())
+                            val cardWidth = (maxWidth - 12.dp * (columns - 1)) / columns
+                            val chunkedAssets = assets.chunked(columns)
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                chunkedAssets.forEach { rowAssets ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        repeat(columns) { idx ->
+                                            if (idx < rowAssets.size) {
+                                                AssetCompactGridCard(
+                                                    asset = rowAssets[idx],
+                                                    planning = assetPlanning[rowAssets[idx].id] ?: 0.0,
+                                                    modifier = Modifier.width(cardWidth),
+                                                    onEdit = { viewModel.openEditAssetDialog(rowAssets[idx]) },
+                                                    onTransfer = { viewModel.openTransferSheet(rowAssets[idx]) }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1924,9 +1928,9 @@ fun AssetCompactGridCard(
             Spacer(modifier = Modifier.height(4.dp))
 
             // Planning & Available
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
                     text = "Terplanning ${Formatters.formatRupiah(planning)}",
@@ -3236,11 +3240,11 @@ fun EditKantongModal(
                             Spacer(modifier = Modifier.height(10.dp))
 
                             // Existing allocations list
-                            LazyColumn(
+                            Column(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                itemsIndexed(uiState.editingPocketAllocations) { index, alloc ->
+                                uiState.editingPocketAllocations.forEachIndexed { index, alloc ->
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
