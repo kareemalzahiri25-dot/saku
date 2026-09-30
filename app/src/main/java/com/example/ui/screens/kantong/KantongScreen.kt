@@ -1,8 +1,10 @@
 package com.example.ui.screens.kantong
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -76,8 +78,10 @@ import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -721,7 +725,7 @@ fun KantongScreen(
                     }
                 }
 
-                // Action Card (Tambah Aset Baru)
+                // Action Card (Tambah Aset Baru + Transfer)
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -768,6 +772,56 @@ fun KantongScreen(
                                     )
                                     Text(
                                         text = "Rekening / Dompet Baru",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = SakuTextSecondary,
+                                            fontSize = 11.sp
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        SakuCard(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { viewModel.openTransferSheet() }
+                                .testTag("transfer_button"),
+                            backgroundColor = SakuCreamSurface,
+                            borderColor = SakuCreamBorder,
+                            cornerRadius = 18.dp,
+                            elevation = 2.dp
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(11.dp))
+                                        .background(SakuLightGreen),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.SwapHoriz,
+                                        contentDescription = null,
+                                        tint = SakuDarkGreen,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Transfer",
+                                        style = MaterialTheme.typography.labelLarge.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = SakuDarkGreen
+                                        )
+                                    )
+                                    Text(
+                                        text = "Pindahkan Dana",
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             color = SakuTextSecondary,
                                             fontSize = 11.sp
@@ -894,12 +948,11 @@ fun KantongScreen(
                                         repeat(columns) { idx ->
                                             if (idx < rowAssets.size) {
                                                 AssetCompactGridCard(
-                                                    asset = rowAssets[idx],
-                                                    planning = assetPlanning[rowAssets[idx].id] ?: 0.0,
-                                                    modifier = Modifier.width(cardWidth),
-                                                    onEdit = { viewModel.openEditAssetDialog(rowAssets[idx]) },
-                                                    onTransfer = { viewModel.openTransferSheet(rowAssets[idx]) }
-                                                )
+                                                                                                    asset = rowAssets[idx],
+                                                                                                    planning = assetPlanning[rowAssets[idx].id] ?: 0.0,
+                                                                                                    modifier = Modifier.width(cardWidth),
+                                                                                                    onEdit = { viewModel.openEditAssetDialog(rowAssets[idx]) }
+                                                                                                )
                                             }
                                         }
                                     }
@@ -909,14 +962,13 @@ fun KantongScreen(
                     }
                 } else {
                     items(assets) { asset ->
-                        AssetDetailedCard(
-                            asset = asset,
-                            planning = assetPlanning[asset.id] ?: 0.0,
-                            onEdit = { viewModel.openEditAssetDialog(asset) },
-                            onDelete = { viewModel.deleteAsset(asset.id) },
-                            onTransfer = { viewModel.openTransferSheet(asset) }
-                        )
-                    }
+                                            AssetDetailedCard(
+                                                asset = asset,
+                                                planning = assetPlanning[asset.id] ?: 0.0,
+                                                onEdit = { viewModel.openEditAssetDialog(asset) },
+                                                onDelete = { viewModel.deleteAsset(asset.id) }
+                                            )
+                                        }
                 }
             }
         }
@@ -991,6 +1043,7 @@ fun KantongScreen(
                 uiState = uiState,
                 assets = assets,
                 onDismiss = { viewModel.closeTransferSheet() },
+                onSourceAssetChange = { viewModel.onTransferSourceAssetChange(it) },
                 onTargetAssetChange = { viewModel.onTransferTargetAssetChange(it) },
                 onAmountChange = { viewModel.onTransferAmountChange(it) },
                 onDateChange = { viewModel.onTransferDateChange(it) },
@@ -1774,9 +1827,20 @@ private fun androidx.compose.foundation.layout.RowScope.SakuTabOptionButton(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val backgroundColor by animateColorAsState(
+        targetValue = if (isSelected) SakuDarkGreen else Color.Transparent,
+        animationSpec = tween(300),
+        label = "bg"
+    )
+    val textColor by animateColorAsState(
+        targetValue = if (isSelected) Color.White else SakuTextPrimary,
+        animationSpec = tween(300),
+        label = "text"
+    )
+    
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = if (isSelected) SakuDarkGreen else Color.Transparent,
+        color = backgroundColor,
         modifier = Modifier
             .weight(1f)
             .fillMaxWidth()
@@ -1787,10 +1851,11 @@ private fun androidx.compose.foundation.layout.RowScope.SakuTabOptionButton(
             text = label,
             style = MaterialTheme.typography.labelLarge.copy(
                 fontWeight = FontWeight.SemiBold,
-                color = if (isSelected) Color.White else SakuTextPrimary
+                color = textColor
             ),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = 1
         )
     }
 }
@@ -1801,8 +1866,7 @@ fun AssetCompactGridCard(
     asset: Asset,
     planning: Double,
     modifier: Modifier = Modifier,
-    onEdit: () -> Unit,
-    onTransfer: () -> Unit
+    onEdit: () -> Unit
 ) {
     val assetColor = parsePocketColor(asset.colorHex)
     val iconVector = getAssetIconVector(asset.iconName, asset.type)
@@ -1859,23 +1923,6 @@ fun AssetCompactGridCard(
                                 fontSize = 9.sp
                             ),
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    // Transfer Button
-                    IconButton(
-                        onClick = onTransfer,
-                        modifier = Modifier
-                            .size(28.dp)
-                            .testTag("transfer_asset_btn_${asset.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SwapHoriz,
-                            contentDescription = "Transfer Dana",
-                            tint = SakuDarkGreen,
-                            modifier = Modifier.size(18.dp)
                         )
                     }
 
@@ -1968,8 +2015,7 @@ fun AssetDetailedCard(
     asset: Asset,
     planning: Double,
     onEdit: () -> Unit,
-    onDelete: () -> Unit,
-    onTransfer: () -> Unit
+    onDelete: () -> Unit
 ) {
     val assetColor = parsePocketColor(asset.colorHex)
     val iconVector = getAssetIconVector(asset.iconName, asset.type)
@@ -2038,17 +2084,6 @@ fun AssetDetailedCard(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = onTransfer,
-                        modifier = Modifier.testTag("transfer_asset_btn_${asset.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SwapHoriz,
-                            contentDescription = "Transfer Dana",
-                            tint = SakuDarkGreen,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
                     IconButton(
                         onClick = onEdit,
                         modifier = Modifier.testTag("edit_asset_btn_${asset.id}")
@@ -3512,89 +3547,4 @@ fun EditKantongModal(
     }
 }
 
-// ==================== TRANSFER SHEET ====================
-@Composable
-fun TransferSheet(
-    uiState: KantongUiState,
-    assets: List<Asset>,
-    onDismiss: () -> Unit,
-    onTargetAssetChange: (String) -> Unit,
-    onAmountChange: (String) -> Unit,
-    onDateChange: (LocalDate) -> Unit,
-    onNoteChange: (String) -> Unit,
-    onSave: () -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .fillMaxHeight(0.85f),
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        color = SakuCreamBackground
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text("Transfer Dana", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // From
-            Text("Dari: ${uiState.transferSourceAssetName}", style = MaterialTheme.typography.bodyMedium)
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // To dropdown
-            Text("Ke Aset", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-            val targetAssets = assets.filter { it.id != uiState.transferSourceAssetId }
-            if (targetAssets.isNotEmpty()) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    targetAssets.take(3).forEach { asset ->
-                        Button(onClick = { onTargetAssetChange(asset.id) },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (asset.id == uiState.transferTargetAssetId) SakuDarkGreen else SakuCreamSurface
-                            )
-                        ) {
-                            Text(asset.name.take(10), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Amount
-            Text("Nominal", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-            OutlinedTextField(
-                value = uiState.transferAmountString,
-                onValueChange = onAmountChange,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("0") },
-                prefix = { Text("Rp ", fontWeight = FontWeight.Bold) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-            )
-            if (uiState.transferWarning != null) {
-                Text(uiState.transferWarning!!, style = MaterialTheme.typography.bodySmall.copy(color = SakuExpenseRed), modifier = Modifier.padding(top = 4.dp))
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Note
-            OutlinedTextField(
-                value = uiState.transferNote,
-                onValueChange = onNoteChange,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Catatan (opsional)") }
-            )
-            
-            // Error
-            if (uiState.errorMessage != null) {
-                Text(uiState.errorMessage!!, style = MaterialTheme.typography.bodySmall.copy(color = SakuExpenseRed), modifier = Modifier.padding(top = 8.dp))
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                    Text("Batal")
-                }
-                Button(onClick = onSave, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = SakuDarkGreen)) {
-                    Text("Transfer")
-                }
-            }
-        }
-    }
-}
+// ==================== (TransferSheet pindah ke TransferSheet.kt — ModalBottomSheet) ====================

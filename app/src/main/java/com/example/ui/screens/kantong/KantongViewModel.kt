@@ -742,11 +742,12 @@ class KantongViewModel(
 
     // --- Transfer antar aset ---
 
-    fun openTransferSheet(sourceAsset: Asset) {
+    fun openTransferSheet(sourceAsset: Asset? = null) {
         _uiState.value = _uiState.value.copy(
             isTransferSheetOpen = true,
-            transferSourceAssetId = sourceAsset.id,
-            transferSourceAssetName = sourceAsset.name,
+            // ponytail: source=null → kartu "Dari" tampil placeholder "Pilih aset asal"
+            transferSourceAssetId = sourceAsset?.id ?: "",
+            transferSourceAssetName = sourceAsset?.name ?: "",
             transferTargetAssetId = "",
             transferTargetAssetName = "",
             transferAmountString = "",
@@ -761,6 +762,16 @@ class KantongViewModel(
         _uiState.value = _uiState.value.copy(
             isTransferSheetOpen = false,
             transferWarning = null
+        )
+    }
+
+    fun onTransferSourceAssetChange(assetId: String) {
+        val asset = assets.value.find { it.id == assetId }
+        _uiState.value = _uiState.value.copy(
+            transferSourceAssetId = assetId,
+            transferSourceAssetName = asset?.name ?: "",
+            transferWarning = null,
+            errorMessage = null
         )
     }
 
