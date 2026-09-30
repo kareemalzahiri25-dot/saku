@@ -3,6 +3,7 @@ package com.example.ui.screens.export
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.domain.repository.SakuRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,25 +28,57 @@ class ExportBackupViewModel(
     fun exportToCsv() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isExporting = true, statusMessage = null)
-            val csv = repository.exportDataAsCsv()
-            _uiState.value = _uiState.value.copy(
-                isExporting = false,
-                exportedCsv = csv,
-                statusMessage = "Ekspor CSV berhasil dibuat!",
-                isError = false
-            )
+            try {
+                val csv = repository.exportDataAsCsv()
+                _uiState.value = _uiState.value.copy(
+                    isExporting = false,
+                    exportedCsv = csv,
+                    statusMessage = "Ekspor CSV berhasil dibuat!",
+                    isError = false
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isExporting = false,
+                    statusMessage = e.message ?: "Gagal membuat ekspor CSV",
+                    isError = true
+                )
+            }
         }
     }
 
     fun exportToJson() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isExporting = true, statusMessage = null)
-            val json = repository.exportDataAsJson()
+            try {
+                val json = repository.exportDataAsJson()
+                _uiState.value = _uiState.value.copy(
+                    isExporting = false,
+                    exportedJson = json,
+                    statusMessage = "Cadangan JSON berhasil dibuat!",
+                    isError = false
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isExporting = false,
+                    statusMessage = e.message ?: "Gagal membuat cadangan JSON",
+                    isError = true
+                )
+            }
+        }
+    }
+
+    fun exportToXlsx(outputStream: java.io.OutputStream) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isExporting = true, statusMessage = null)
+            val success = repository.exportToXlsx(outputStream)
             _uiState.value = _uiState.value.copy(
                 isExporting = false,
-                exportedJson = json,
-                statusMessage = "Cadangan JSON berhasil dibuat!",
-                isError = false
+                statusMessage = if (success) "Ekspor XLSX berhasil!" else "Gagal membuat XLSX",
+                isError = !success
             )
         }
     }

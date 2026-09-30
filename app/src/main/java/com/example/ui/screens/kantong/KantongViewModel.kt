@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -247,8 +248,16 @@ class KantongViewModel(
         )
 
         return viewModelScope.launch {
-            repository.insertPocket(newPocket)
-            closeAddPocketDialog()
+            try {
+                repository.insertPocket(newPocket)
+                closeAddPocketDialog()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = e.message ?: "Gagal membuat kantong"
+                )
+            }
         }
     }
 
@@ -493,26 +502,50 @@ class KantongViewModel(
 
     fun deletePocket(pocketId: String) {
         viewModelScope.launch {
-            repository.deletePocket(pocketId)
+            try {
+                repository.deletePocket(pocketId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = e.message ?: "Gagal menghapus kantong"
+                )
+            }
         }
     }
 
     fun markAsCompleted(pocketId: String, completed: Boolean) {
         viewModelScope.launch {
-            val pocket = repository.getPocketById(pocketId)
-            if (pocket != null) {
-                val updated = pocket.copy(completed = completed)
-                repository.updatePocket(updated)
+            try {
+                val pocket = repository.getPocketById(pocketId)
+                if (pocket != null) {
+                    val updated = pocket.copy(completed = completed)
+                    repository.updatePocket(updated)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = e.message ?: "Gagal mengubah status selesai"
+                )
             }
         }
     }
 
     fun markAsArchived(pocketId: String, archived: Boolean) {
         viewModelScope.launch {
-            val pocket = repository.getPocketById(pocketId)
-            if (pocket != null) {
-                val updated = pocket.copy(archived = archived)
-                repository.updatePocket(updated)
+            try {
+                val pocket = repository.getPocketById(pocketId)
+                if (pocket != null) {
+                    val updated = pocket.copy(archived = archived)
+                    repository.updatePocket(updated)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = e.message ?: "Gagal mengubah status arsip"
+                )
             }
         }
     }

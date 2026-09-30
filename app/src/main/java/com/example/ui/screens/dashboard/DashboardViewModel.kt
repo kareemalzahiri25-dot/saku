@@ -12,6 +12,7 @@ import com.example.domain.model.Transaction
 import com.example.domain.model.User
 import com.example.domain.repository.SakuRepository
 import com.example.ui.screens.profile.AvatarBitmapUtil
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,6 +27,9 @@ class DashboardViewModel(
 
     private val _isBalanceVisible = MutableStateFlow(true)
     val isBalanceVisible: StateFlow<Boolean> = _isBalanceVisible.asStateFlow()
+
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
     val user: StateFlow<User?> = repository.getUser()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -58,7 +62,13 @@ class DashboardViewModel(
 
     fun deleteTransaction(transactionId: String) {
         viewModelScope.launch {
-            repository.deleteTransaction(transactionId)
+            try {
+                repository.deleteTransaction(transactionId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _errorMessage.value = e.message ?: "Gagal menghapus transaksi"
+            }
         }
     }
 

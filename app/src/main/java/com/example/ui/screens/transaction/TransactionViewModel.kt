@@ -16,6 +16,7 @@ import com.example.ui.screens.profile.ApiKeyVerificationStatus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -424,29 +425,37 @@ class TransactionViewModel(
         }
 
         viewModelScope.launch {
-            val dateMillis = state.selectedDate
-                .atStartOfDay(ZoneId.systemDefault())
-                .toInstant()
-                .toEpochMilli()
-            
-            val tx = Transaction(
-                id = "tx_${System.currentTimeMillis()}",
-                title = state.title.trim(),
-                amount = amount,
-                type = state.type,
-                categoryId = category.id,
-                categoryName = category.name,
-                categoryIcon = category.icon,
-                assetId = state.assetId,
-                assetName = state.assetName,
-                dateMillis = dateMillis,
-                note = state.note.trim(),
-                pocketId = pocket.id,
-                pocketName = pocket.name
-            )
-            repository.insertTransaction(tx)
-            _formState.value = TransactionFormState(isSavedSuccess = true)
-            onSuccess()
+            try {
+                val dateMillis = state.selectedDate
+                    .atStartOfDay(ZoneId.systemDefault())
+                    .toInstant()
+                    .toEpochMilli()
+                
+                val tx = Transaction(
+                    id = "tx_${System.currentTimeMillis()}",
+                    title = state.title.trim(),
+                    amount = amount,
+                    type = state.type,
+                    categoryId = category.id,
+                    categoryName = category.name,
+                    categoryIcon = category.icon,
+                    assetId = state.assetId,
+                    assetName = state.assetName,
+                    dateMillis = dateMillis,
+                    note = state.note.trim(),
+                    pocketId = pocket.id,
+                    pocketName = pocket.name
+                )
+                repository.insertTransaction(tx)
+                _formState.value = TransactionFormState(isSavedSuccess = true)
+                onSuccess()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _formState.value = state.copy(
+                    errorMessage = e.message ?: "Gagal menyimpan transaksi"
+                )
+            }
         }
     }
 }

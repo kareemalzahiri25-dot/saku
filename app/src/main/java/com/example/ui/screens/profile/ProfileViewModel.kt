@@ -10,6 +10,7 @@ import com.example.domain.repository.SakuRepository
 import android.content.Context
 import android.graphics.Bitmap
 import com.example.ui.screens.profile.AvatarBitmapUtil
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -211,7 +212,15 @@ class ProfileViewModel(
     fun toggleBiometric() {
         val currentUser = user.value ?: return
         viewModelScope.launch {
-            repository.saveUser(currentUser.copy(isBiometricEnabled = !currentUser.isBiometricEnabled))
+            try {
+                repository.saveUser(currentUser.copy(isBiometricEnabled = !currentUser.isBiometricEnabled))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isSuccessMessage = "Gagal mengubah biometric: ${e.message}"
+                )
+            }
         }
     }
 
@@ -225,11 +234,20 @@ class ProfileViewModel(
 
     fun resetData() {
         viewModelScope.launch {
-            repository.resetToDefaultData()
-            _uiState.value = _uiState.value.copy(
-                isResetDialogOpen = false,
-                isSuccessMessage = "Data aplikasi telah disetel ulang"
-            )
+            try {
+                repository.resetToDefaultData()
+                _uiState.value = _uiState.value.copy(
+                    isResetDialogOpen = false,
+                    isSuccessMessage = "Data aplikasi telah disetel ulang"
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isResetDialogOpen = false,
+                    isSuccessMessage = "Gagal reset data: ${e.message}"
+                )
+            }
         }
     }
 

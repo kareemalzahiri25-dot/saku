@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 data class AuthUiState(
@@ -66,19 +67,28 @@ class AuthViewModel(
         }
 
         viewModelScope.launch {
-            _uiState.value = state.copy(isLoading = true, errorMessage = null)
-            // Offline-first local login verification
-            repository.saveUser(
-                User(
-                    id = "user_default",
-                    name = if (state.fullName.isNotBlank()) state.fullName else "Budi Santoso",
-                    email = state.email,
-                    iconName = "person",
-                    colorHex = "#153E35"
+            try {
+                _uiState.value = state.copy(isLoading = true, errorMessage = null)
+                // Offline-first local login verification
+                repository.saveUser(
+                    User(
+                        id = "user_default",
+                        name = if (state.fullName.isNotBlank()) state.fullName else "Budi Santoso",
+                        email = state.email,
+                        iconName = "person",
+                        colorHex = "#153E35"
+                    )
                 )
-            )
-            _uiState.value = state.copy(isLoading = false)
-            onSuccess()
+                _uiState.value = state.copy(isLoading = false)
+                onSuccess()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.value = state.copy(
+                    isLoading = false,
+                    errorMessage = e.message ?: "Gagal masuk"
+                )
+            }
         }
     }
 
@@ -94,18 +104,27 @@ class AuthViewModel(
         }
 
         viewModelScope.launch {
-            _uiState.value = state.copy(isLoading = true, errorMessage = null)
-            repository.saveUser(
-                User(
-                    id = "user_${System.currentTimeMillis()}",
-                    name = state.fullName,
-                    email = state.email,
-                    iconName = "person",
-                    colorHex = "#153E35"
+            try {
+                _uiState.value = state.copy(isLoading = true, errorMessage = null)
+                repository.saveUser(
+                    User(
+                        id = "user_${System.currentTimeMillis()}",
+                        name = state.fullName,
+                        email = state.email,
+                        iconName = "person",
+                        colorHex = "#153E35"
+                    )
                 )
-            )
-            _uiState.value = state.copy(isLoading = false)
-            onSuccess()
+                _uiState.value = state.copy(isLoading = false)
+                onSuccess()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.value = state.copy(
+                    isLoading = false,
+                    errorMessage = e.message ?: "Gagal mendaftar"
+                )
+            }
         }
     }
 
