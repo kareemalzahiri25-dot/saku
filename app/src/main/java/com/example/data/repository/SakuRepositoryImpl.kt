@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -703,15 +704,191 @@ class SakuRepositoryImpl(
         root.toString(2)
     }
 
-    override suspend fun restoreDataFromJson(json: String): Boolean = withContext(Dispatchers.IO) {
-        // For Phase 1, simplified - full restore will need UI refinement
+    override suspend fun exportToXlsx(outputStream: java.io.OutputStream): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (json.isBlank()) return@withContext false
+            val transactions = (transactionDao.getAllTransactions().firstOrNull() ?: emptyList()).map { it.toDomain() }
+            val assets = assetDao.getAllAssets().firstOrNull() ?: emptyList()
+            
+            val totalBalance = assets.sumOf { it.balance }
+            val totalIncome = transactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount }
+            val totalExpense = transactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }
+            val totalTransfer = transactions.filter { it.type == TransactionType.TRANSFER }.sumOf { it.amount }
+            
+            com.example.data.export.SimpleXlsxWriter.write(
+                outputStream = outputStream,
+                periodTitle = "Semua Data",
+                totalIncome = totalIncome,
+                totalExpense = totalExpense,
+                totalTransfer = totalTransfer,
+                totalBalance = totalBalance,
+                transactions = transactions
+            )
             true
         } catch (e: Exception) {
+            e.printStackTrace()
             false
         }
     }
+
+    override suspend fun restoreDataFromJson(json: String): Boolean = withContext(Dispatchers.IO) {
+            try {
+                if (json.isBlank()) return@withContext false
+            
+                val root = JSONObject(json)
+            
+                // Validate required fields
+                if (!root.has("appName") || root.getString("appName") != "Saku") {
+                    return@withContext false
+                }
+            
+                // Use transaction for atomicity
+                database.withTransaction {
+                    // Clear in reverse dependency order
+                    expenseAllocationDao.clearAll()
+                    transactionDao.clearAll()
+                    pocketAllocationDao.clearAll()
+                    pocketDao.clearAll()
+                    assetDao.clearAll()
+                    categoryDao.clearAll()
+                    userDao.clearAll()
+                
+                    // Restore Assets
+                    if (root.has("assets")) {
+                        val assetsArray = root.getJSONArray("assets")
+                        val assets = mutableListOf<AssetEntity>()
+                        for (i in 0 until assetsArray.length()) {
+                            val obj = assetsArray.getJSONObject(i)
+                            assets.add(AssetEntity(
+                                id = obj.getString("id"),
+                                name = obj.getString("name"),
+                                typeString = obj.getString("typeString"),
+                                balance = obj.getDouble("balance"),
+                                currency = obj.getString("currency"),
+                                isActive = obj.getBoolean("isActive"),
+                                iconName = "account_balance",
+                                colorHex = "#153E35",
+                                isDefault = false
+                            ))
+                        }
+                        if (assets.isNotEmpty()) assetDao.insertAssets(assets)
+                    }
+                
+                    // Restore Pockets
+                    if (root.has("pockets")) {
+                        val pocketsArray = root.getJSONArray("pockets")
+                        val pockets = mutableListOf<PocketEntity>()
+                        for (i in 0 until pocketsArray.length()) {
+                            val obj = pocketsArray.getJSONObject(i)
+                            pockets.add(PocketEntity(
+                                id = obj.getString("id"),
+                                name = obj.getString("name"),
+                                targetAmount = obj.getDouble("targetAmount"),
+                                color = obj.getString("color"),
+                                icon = obj.getString("icon"),
+                                isActive = obj.getBoolean("isActive"),
+                                completed = obj.getBoolean("completed"),
+                                archived = obj.getBoolean("archived"),
+                                description = obj.optString("description", "")
+                            ))
+                        }
+                        if (pockets.isNotEmpty()) pocketDao.insertPockets(pockets)
+                    }
+                
+                    // Restore Pocket Allocations
+                    if (root.has("pocketAllocations")) {
+                        val allocArray = root.getJSONArray("pocketAllocations")
+                        val allocations = mutableListOf<PocketAllocationEntity>()
+                        for (i in 0 until allocArray.length()) {
+                            val obj = allocArray.getJSONObject(i)
+                            allocations.add(PocketAllocationEntity(
+                                id = obj.getString("id"),
+                                assetId = obj.getString("assetId"),
+                                pocketId = obj.getString("pocketId"),
+                                allocatedAmount = obj.getDouble("allocatedAmount")
+                            ))
+                        }
+                        if (allocations.isNotEmpty()) pocketAllocationDao.insertAllocations(allocations)
+                    }
+                
+                    // Restore Categories
+                    if (root.has("categories")) {
+                        val catArray = root.getJSONArray("categories")
+                        val categories = mutableListOf<CategoryEntity>()
+                        for (i in 0 until catArray.length()) {
+                            val obj = catArray.getJSONObject(i)
+                            categories.add(CategoryEntity(
+                                id = obj.getString("id"),
+                                name = obj.getString("name"),
+                                typeString = obj.getString("typeString"),
+                                iconName = obj.getString("iconName"),
+                                colorHex = obj.getString("colorHex")
+                            ))
+                        }
+                        if (categories.isNotEmpty()) categoryDao.insertCategories(categories)
+                    }
+                
+                    // Restore Transactions
+                    if (root.has("transactions")) {
+                        val txArray = root.getJSONArray("transactions")
+                        val transactions = mutableListOf<TransactionEntity>()
+                        for (i in 0 until txArray.length()) {
+                            val obj = txArray.getJSONObject(i)
+                            transactions.add(TransactionEntity(
+                                id = obj.getString("id"),
+                                title = obj.getString("title"),
+                                amount = obj.getDouble("amount"),
+                                typeString = obj.getString("typeString"),
+                                categoryId = obj.getString("categoryId"),
+                                categoryName = obj.getString("categoryName"),
+                                categoryIcon = obj.getString("categoryIcon"),
+                                assetId = obj.getString("assetId"),
+                                assetName = obj.getString("assetName"),
+                                targetAssetId = obj.optString("targetAssetId", null),
+                                targetAssetName = obj.optString("targetAssetName", null),
+                                dateMillis = obj.getLong("dateMillis"),
+                                note = obj.getString("note"),
+                                receiptImageUrl = obj.optString("receiptImageUrl", null)
+                            ))
+                        }
+                        if (transactions.isNotEmpty()) transactionDao.insertTransactions(transactions)
+                    }
+                
+                    // Restore Expense Allocations
+                    if (root.has("expenseAllocations")) {
+                        val eaArray = root.getJSONArray("expenseAllocations")
+                        val allocations = mutableListOf<ExpenseAllocationEntity>()
+                        for (i in 0 until eaArray.length()) {
+                            val obj = eaArray.getJSONObject(i)
+                            allocations.add(ExpenseAllocationEntity(
+                                id = obj.getString("id"),
+                                transactionId = obj.getString("transactionId"),
+                                pocketId = obj.getString("pocketId"),
+                                amount = obj.getDouble("amount")
+                            ))
+                        }
+                        if (allocations.isNotEmpty()) expenseAllocationDao.insertAllocations(allocations)
+                    }
+                
+                    // Restore User (if present)
+                    if (root.has("user")) {
+                        val userObj = root.getJSONObject("user")
+                        userDao.insertUser(UserEntity(
+                            id = userObj.getString("id"),
+                            name = userObj.getString("name"),
+                            email = userObj.getString("email"),
+                            iconName = userObj.getString("iconName"),
+                            colorHex = userObj.getString("colorHex"),
+                            isBiometricEnabled = userObj.getBoolean("isBiometricEnabled")
+                        ))
+                    }
+                }
+            
+                true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
+            }
+        }
 
     override suspend fun resetToDefaultData() = withContext(Dispatchers.IO) {
         // For Phase 1, use the default data from SakuDatabase.kt's callback

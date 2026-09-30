@@ -28,9 +28,8 @@ import kotlin.math.min
 enum class ReportPeriod(val titleIndo: String) {
     TODAY("Hari Ini"),
     THIS_WEEK("Minggu Ini"),
-    LAST_WEEK("Minggu Lalu"),
     THIS_MONTH("Bulan Ini"),
-    LAST_MONTH("Bulan Lalu"),
+    THIS_YEAR("Tahun Ini"),
     CUSTOM("Kustom")
 }
 
@@ -57,7 +56,10 @@ data class TopTransactionItem(
     val categoryIcon: String,
     val dateMillis: Long,
     val amount: Double,
-    val type: TransactionType
+    val type: TransactionType,
+    // For TRANSFER type
+    val sourceAssetName: String? = null,
+    val targetAssetName: String? = null
 )
 
 enum class TopTransactionFilter(val title: String) {
@@ -69,7 +71,8 @@ enum class TopTransactionFilter(val title: String) {
 enum class TransactionTypeFilter(val title: String) {
     ALL("Semua"),
     INCOME("Pemasukan"),
-    EXPENSE("Pengeluaran")
+    EXPENSE("Pengeluaran"),
+    TRANSFER("Transfer")
 }
 
 // ============================================================
@@ -84,6 +87,7 @@ data class ReportUiState(
     // Summary
     val totalIncome: Double = 0.0,
     val totalExpense: Double = 0.0,
+    val totalTransfer: Double = 0.0,
     val incomeChangePercent: Double = 0.0,    // vs previous period
     val expenseChangePercent: Double = 0.0,   // vs previous period
     // Cashflow line chart
@@ -285,23 +289,6 @@ class ReportViewModel(
                 val end = cal.timeInMillis
                 Triple(start, end, "Minggu Ini")
             }
-            ReportPeriod.LAST_WEEK -> {
-                val cal = Calendar.getInstance()
-                cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
-                cal.add(Calendar.WEEK_OF_YEAR, -1)
-                cal.set(Calendar.HOUR_OF_DAY, 0)
-                cal.set(Calendar.MINUTE, 0)
-                cal.set(Calendar.SECOND, 0)
-                cal.set(Calendar.MILLISECOND, 0)
-                val start = cal.timeInMillis
-                cal.add(Calendar.DAY_OF_WEEK, 6)
-                cal.set(Calendar.HOUR_OF_DAY, 23)
-                cal.set(Calendar.MINUTE, 59)
-                cal.set(Calendar.SECOND, 59)
-                cal.set(Calendar.MILLISECOND, 999)
-                val end = cal.timeInMillis
-                Triple(start, end, "Minggu Lalu")
-            }
             ReportPeriod.THIS_MONTH -> {
                 val cal = Calendar.getInstance()
                 cal.set(Calendar.DAY_OF_MONTH, 1)
@@ -315,19 +302,23 @@ class ReportViewModel(
                 val end = cal.timeInMillis
                 Triple(start, end, "Bulan Ini")
             }
-            ReportPeriod.LAST_MONTH -> {
+            ReportPeriod.THIS_YEAR -> {
                 val cal = Calendar.getInstance()
-                cal.add(Calendar.MONTH, -1)
+                cal.set(Calendar.MONTH, Calendar.JANUARY)
                 cal.set(Calendar.DAY_OF_MONTH, 1)
                 cal.set(Calendar.HOUR_OF_DAY, 0)
                 cal.set(Calendar.MINUTE, 0)
                 cal.set(Calendar.SECOND, 0)
                 cal.set(Calendar.MILLISECOND, 0)
                 val start = cal.timeInMillis
-                cal.add(Calendar.MONTH, 1)
-                cal.add(Calendar.MILLISECOND, -1)
+                cal.set(Calendar.MONTH, Calendar.DECEMBER)
+                cal.set(Calendar.DAY_OF_MONTH, 31)
+                cal.set(Calendar.HOUR_OF_DAY, 23)
+                cal.set(Calendar.MINUTE, 59)
+                cal.set(Calendar.SECOND, 59)
+                cal.set(Calendar.MILLISECOND, 999)
                 val end = cal.timeInMillis
-                Triple(start, end, "Bulan Lalu")
+                Triple(start, end, "Tahun Ini")
             }
             ReportPeriod.CUSTOM -> {
                 if (customStartMillis > 0L && customEndMillis > 0L) {
@@ -364,6 +355,7 @@ class ReportViewModel(
         // Calculate totals
         val totalIncome = periodTransactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount }
         val totalExpense = periodTransactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }
+        val totalTransfer = periodTransactions.filter { it.type == TransactionType.TRANSFER }.sumOf { it.amount }
         val prevIncome = prevPeriodTransactions.filter { it.type == TransactionType.INCOME }.sumOf { it.amount }
         val prevExpense = prevPeriodTransactions.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }
 
@@ -442,7 +434,9 @@ class ReportViewModel(
         val balancePoints = buildBalancePoints(transactions, assets, periodStart, periodEnd)
 
         // Top transactions
-        val topTransactions = getTopTransactions(transactions, periodStart, periodEnd, topFilter, typeFilter)
+        // Map id -> nama aset aktual, untuk menampilkan "Sumber → Tujuan" pada transfer
+        val assetNames = assets.associate { it.id to it.name }
+        val topTransactions = getTopTransactions(transactions, periodStart, periodEnd, topFilter, typeFilter, assetNames)
 
         return ReportUiState(
             period = period,
@@ -452,6 +446,7 @@ class ReportViewModel(
             totalAssetBalance = assets.sumOf { it.balance },
             totalIncome = totalIncome,
             totalExpense = totalExpense,
+            totalTransfer = totalTransfer,
             incomeChangePercent = incomeChangePercent,
             expenseChangePercent = expenseChangePercent,
             cashflowPoints = cashflowPoints,
@@ -701,15 +696,18 @@ class ReportViewModel(
         periodStart: Long,
         periodEnd: Long,
         topFilter: TopTransactionFilter,
-        typeFilter: TransactionTypeFilter
+        typeFilter: TransactionTypeFilter,
+        assetNames: Map<String, String>
     ): List<TopTransactionItem> {
         var filtered = transactions.filter { tx ->
             tx.dateMillis in periodStart..periodEnd
         }
 
+        // Filter tipe SEBELUM Top N
         when (typeFilter) {
             TransactionTypeFilter.INCOME -> filtered = filtered.filter { it.type == TransactionType.INCOME }
             TransactionTypeFilter.EXPENSE -> filtered = filtered.filter { it.type == TransactionType.EXPENSE }
+            TransactionTypeFilter.TRANSFER -> filtered = filtered.filter { it.type == TransactionType.TRANSFER }
             TransactionTypeFilter.ALL -> {}
         }
 
@@ -730,7 +728,15 @@ class ReportViewModel(
                     categoryIcon = tx.categoryIcon,
                     dateMillis = tx.dateMillis,
                     amount = tx.amount,
-                    type = tx.type
+                    type = tx.type,
+                    sourceAssetName = if (tx.type == TransactionType.TRANSFER) {
+                        tx.assetId.takeIf { it.isNotEmpty() }?.let { assetNames[it] }
+                            ?: tx.assetName.takeIf { it.isNotBlank() }
+                    } else null,
+                    targetAssetName = if (tx.type == TransactionType.TRANSFER) {
+                        tx.targetAssetId?.takeIf { it.isNotEmpty() }?.let { assetNames[it] }
+                            ?: tx.targetAssetName?.takeIf { it.isNotBlank() }
+                    } else null
                 )
             }
     }

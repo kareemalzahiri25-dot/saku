@@ -71,6 +71,7 @@ interface SakuRepository {
     // Backup, Restore & Reset
     suspend fun exportDataAsCsv(): String
     suspend fun exportDataAsJson(): String
+    suspend fun exportToXlsx(outputStream: java.io.OutputStream): Boolean
     suspend fun restoreDataFromJson(json: String): Boolean
     suspend fun resetToDefaultData()
 }

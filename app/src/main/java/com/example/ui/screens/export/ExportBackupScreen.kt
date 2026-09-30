@@ -42,12 +42,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.example.ui.components.SakuCard
 import com.example.ui.components.SakuTopBar
 import com.example.ui.theme.SakuCreamBackground
@@ -67,6 +70,18 @@ fun ExportBackupScreen(
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    
+    val createXlsxLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    ) { uri ->
+        if (uri != null) {
+            val outputStream = context.contentResolver.openOutputStream(uri)
+            if (outputStream != null) {
+                viewModel.exportToXlsx(outputStream)
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -203,6 +218,47 @@ fun ExportBackupScreen(
                                         modifier = Modifier.padding(10.dp)
                                     )
                                 }
+                            }
+                        }
+                    }
+
+                    // Export to XLSX Section
+                    SakuCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        backgroundColor = SakuCreamSurface,
+                        cornerRadius = 20.dp,
+                        elevation = 2.dp
+                    ) {
+                        Column(modifier = Modifier.padding(18.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(SakuLightGreen),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(imageVector = Icons.Default.TableChart, contentDescription = null, tint = SakuDarkGreen, modifier = Modifier.size(22.dp))
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text("Ekspor ke Excel (XLSX)", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = SakuDarkGreen))
+                                    Text("Format Excel standar untuk spreadsheet", style = MaterialTheme.typography.bodySmall.copy(color = SakuTextSecondary))
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            Button(
+                                onClick = { createXlsxLauncher.launch("Laporan_Saku.xlsx") },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = SakuDarkGreen,
+                                    contentColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().height(46.dp).testTag("export_xlsx_button"),
+                                enabled = !uiState.isExporting
+                            ) {
+                                Icon(imageVector = Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Buat & Unduh Berkas XLSX", fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }

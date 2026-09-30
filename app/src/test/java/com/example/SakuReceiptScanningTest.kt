@@ -110,6 +110,7 @@ class SakuReceiptScanningTest {
 
         override suspend fun exportDataAsCsv(): String = ""
         override suspend fun exportDataAsJson(): String = ""
+        override suspend fun exportToXlsx(outputStream: java.io.OutputStream): Boolean = false
         override suspend fun restoreDataFromJson(json: String): Boolean = true
         override suspend fun resetToDefaultData() {}
 
@@ -130,6 +131,7 @@ class SakuReceiptScanningTest {
         override suspend fun insertPocketAllocation(allocation: PocketAllocation) {}
         override suspend fun updatePocketAllocation(allocation: PocketAllocation) {}
         override suspend fun deletePocketAllocation(allocationId: String) {}
+        override suspend fun replacePocketAllocations(pocketId: String, allocations: List<PocketAllocation>) {}
 
         override fun getTransactionsByAsset(assetId: String): Flow<List<Transaction>> = flowOf(insertedTransactions.filter { it.assetId == assetId })
         override fun getExpenseAllocations(transactionId: String): Flow<List<ExpenseAllocation>> = flowOf(sampleExpenseAllocations.filter { it.transactionId == transactionId })

@@ -1,7 +1,6 @@
 package com.example.ui.screens.report
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,34 +27,28 @@ import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.TableChart
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDateRangePickerState
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -92,6 +86,7 @@ import com.example.ui.theme.SakuDarkGreen
 import com.example.ui.theme.SakuExpenseRed
 import com.example.ui.theme.SakuExpenseRedBg
 import com.example.ui.theme.SakuGoldAccent
+import com.example.ui.theme.SakuGoldLight
 import com.example.ui.theme.SakuIncomeGreen
 import com.example.ui.theme.SakuIncomeGreenBg
 import com.example.ui.theme.SakuLightGreen
@@ -109,9 +104,6 @@ fun ReportScreen(
     onNavigateToExport: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var showExportSheet by remember { mutableStateOf(false) }
-    var cloudDialogMessage by remember { mutableStateOf<String?>(null) }
-    var excelDialogMessage by remember { mutableStateOf<String?>(null) }
 
     Box(
         modifier = modifier
@@ -143,6 +135,7 @@ fun ReportScreen(
                 SummarySection(
                     totalIncome = uiState.totalIncome,
                     totalExpense = uiState.totalExpense,
+                    totalTransfer = uiState.totalTransfer,
                     incomeChangePercent = uiState.incomeChangePercent,
                     expenseChangePercent = uiState.expenseChangePercent
                 )
@@ -180,83 +173,14 @@ fun ReportScreen(
 
             // 8. Tombol Export
             item {
-                ExportActionCard(onClick = { showExportSheet = true })
+                ExportActionCard(onClick = onNavigateToExport)
             }
         }
-    }
-
-    // Export Options Bottom Sheet
-    if (showExportSheet) {
-        ExportBottomSheet(
-            onDismiss = { showExportSheet = false },
-            onSelectExcel = {
-                showExportSheet = false
-                excelDialogMessage = "Format ekspor Excel (.xlsx) akan segera hadir. Anda dapat menggunakan ekspor format CSV yang kompatibel langsung dengan Microsoft Excel pada menu Cadangan Internal."
-            },
-            onSelectBackupInternal = {
-                showExportSheet = false
-                onNavigateToExport()
-            },
-            onSelectCloud = {
-                showExportSheet = false
-                cloudDialogMessage = "Sinkronisasi Cloud memerlukan konfigurasi autentikasi & backend Firebase. Saat ini seluruh cadangan tersimpan dengan aman di database lokal perangkat Anda."
-            }
-        )
-    }
-
-    // Excel notice dialog
-    excelDialogMessage?.let { msg ->
-        AlertDialog(
-            onDismissRequest = { excelDialogMessage = null },
-            title = { Text("Ekspor Excel", fontWeight = FontWeight.Bold, color = SakuDarkGreen) },
-            text = { Text(msg, color = SakuTextSecondary) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        excelDialogMessage = null
-                        onNavigateToExport()
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = SakuDarkGreen,
-                        contentColor = Color.White
-                    )
-                ) {
-                    Text("Buka Cadangan CSV")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { excelDialogMessage = null }) {
-                    Text("Tutup", color = SakuTextMuted)
-                }
-            },
-            containerColor = SakuCreamSurface
-        )
-    }
-
-    // Cloud notice dialog
-    cloudDialogMessage?.let { msg ->
-        AlertDialog(
-            onDismissRequest = { cloudDialogMessage = null },
-            title = { Text("Cadangan Cloud", fontWeight = FontWeight.Bold, color = SakuDarkGreen) },
-            text = { Text(msg, color = SakuTextSecondary) },
-            confirmButton = {
-                Button(
-                    onClick = { cloudDialogMessage = null },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = SakuDarkGreen,
-                        contentColor = Color.White
-                    )
-                ) {
-                    Text("Mengerti")
-                }
-            },
-            containerColor = SakuCreamSurface
-        )
     }
 }
 
 // ============================================================
-// 2. Filter Periode Utama
+// 2. Filter Periode Utama (horizontal chip row)
 // ============================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -266,9 +190,16 @@ fun PeriodFilterSection(
     onSelectPeriod: (ReportPeriod) -> Unit,
     onSelectCustomRange: (Long, Long) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
     var showRangePicker by remember { mutableStateOf(false) }
-    val rotation by animateFloatAsState(targetValue = if (expanded) 180f else 0f, label = "dropdown_icon")
+
+    // Urutan WAJIB: Harian, Mingguan, Bulanan, Tahun Ini, Custom
+    val periodOptions = listOf(
+        ReportPeriod.TODAY,
+        ReportPeriod.THIS_WEEK,
+        ReportPeriod.THIS_MONTH,
+        ReportPeriod.THIS_YEAR,
+        ReportPeriod.CUSTOM
+    )
 
     SakuCard(
         modifier = Modifier.fillMaxWidth(),
@@ -277,11 +208,11 @@ fun PeriodFilterSection(
         elevation = 2.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
+            // Header label + periode aktif
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expanded = !expanded }
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -313,60 +244,54 @@ fun PeriodFilterSection(
                         )
                     }
                 }
-                Icon(
-                    imageVector = Icons.Default.ArrowDropDown,
-                    contentDescription = null,
-                    tint = SakuDarkGreen,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .rotate(rotation)
-                )
             }
 
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                modifier = Modifier.background(SakuCreamSurface)
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                listOf(
-                    ReportPeriod.TODAY,
-                    ReportPeriod.THIS_WEEK,
-                    ReportPeriod.LAST_WEEK,
-                    ReportPeriod.THIS_MONTH,
-                    ReportPeriod.LAST_MONTH
-                ).forEach { period ->
-                    DropdownMenuItem(
-                        text = {
+                items(periodOptions.size) { index ->
+                    val period = periodOptions[index]
+                    val isSelected = selectedPeriod == period
+
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = {
+                            if (period == ReportPeriod.CUSTOM) {
+                                showRangePicker = true
+                            } else {
+                                onSelectPeriod(period)
+                            }
+                        },
+                        label = {
                             Text(
-                                text = period.titleIndo,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = if (selectedPeriod == period) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (selectedPeriod == period) SakuDarkGreen else SakuTextPrimary
+                                text = when (period) {
+                                    ReportPeriod.TODAY -> "Harian"
+                                    ReportPeriod.THIS_WEEK -> "Mingguan"
+                                    ReportPeriod.THIS_MONTH -> "Bulanan"
+                                    ReportPeriod.THIS_YEAR -> "Tahun Ini"
+                                    ReportPeriod.CUSTOM -> "Custom"
+                                },
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                 )
                             )
                         },
-                        onClick = {
-                            onSelectPeriod(period)
-                            expanded = false
-                        }
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = SakuDarkGreen,
+                            selectedLabelColor = Color.White,
+                            containerColor = SakuCreamBackground,
+                            labelColor = SakuTextSecondary
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            borderColor = SakuCreamBorder,
+                            selectedBorderColor = SakuDarkGreen,
+                            enabled = true,
+                            selected = isSelected
+                        )
                     )
                 }
-
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = "${ReportPeriod.CUSTOM.titleIndo}...",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = if (selectedPeriod == ReportPeriod.CUSTOM) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selectedPeriod == ReportPeriod.CUSTOM) SakuDarkGreen else SakuTextPrimary
-                            )
-                        )
-                    },
-                    onClick = {
-                        expanded = false
-                        showRangePicker = true
-                    }
-                )
             }
         }
     }
@@ -433,6 +358,7 @@ fun PeriodFilterSection(
 fun SummarySection(
     totalIncome: Double,
     totalExpense: Double,
+    totalTransfer: Double,
     incomeChangePercent: Double,
     expenseChangePercent: Double
 ) {
@@ -459,6 +385,16 @@ fun SummarySection(
             bgTint = SakuExpenseRedBg,
             isIncome = false
         )
+
+        SummaryMetricCard(
+            modifier = Modifier.weight(1f),
+            title = "Transfer",
+            amount = totalTransfer,
+            changePercent = 0.0,
+            amountColor = SakuGoldAccent,
+            bgTint = SakuGoldLight,
+            isIncome = null
+        )
     }
 }
 
@@ -470,7 +406,7 @@ fun SummaryMetricCard(
     changePercent: Double,
     amountColor: Color,
     bgTint: Color,
-    isIncome: Boolean
+    isIncome: Boolean?
 ) {
     SakuCard(
         modifier = modifier.height(130.dp),
@@ -500,12 +436,22 @@ fun SummaryMetricCard(
                         .background(bgTint, RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = if (isIncome) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown,
-                        contentDescription = null,
-                        tint = amountColor,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    if (isIncome != null) {
+                        Icon(
+                            imageVector = if (isIncome) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown,
+                            contentDescription = null,
+                            tint = amountColor,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    } else {
+                        // Transfer: swap icon (neutral arrow)
+                        Icon(
+                            imageVector = Icons.Default.SwapHoriz,
+                            contentDescription = null,
+                            tint = amountColor,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
 
@@ -518,21 +464,31 @@ fun SummaryMetricCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                if (changePercent != 0.0) {
-                    val sign = if (changePercent > 0) "+" else ""
-                    val percentText = "$sign%.1f%% vs lalu".format(changePercent)
-                    Text(
-                        text = percentText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isIncome) {
-                            if (changePercent >= 0) SakuIncomeGreen else SakuExpenseRed
-                        } else {
-                            if (changePercent <= 0) SakuIncomeGreen else SakuExpenseRed
-                        }
-                    )
+                if (isIncome != null) {
+                    // Income/Expense: show trend
+                    if (changePercent != 0.0) {
+                        val sign = if (changePercent > 0) "+" else ""
+                        val percentText = "$sign%.1f%% vs lalu".format(changePercent)
+                        Text(
+                            text = percentText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isIncome) {
+                                if (changePercent >= 0) SakuIncomeGreen else SakuExpenseRed
+                            } else {
+                                if (changePercent <= 0) SakuIncomeGreen else SakuExpenseRed
+                            }
+                        )
+                    } else {
+                        Text(
+                            text = "Stabil vs periode lalu",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = SakuTextMuted
+                        )
+                    }
                 } else {
+                    // Transfer: no trend, just neutral label
                     Text(
-                        text = "Stabil vs periode lalu",
+                        text = "Perpindahan aset",
                         style = MaterialTheme.typography.labelSmall,
                         color = SakuTextMuted
                     )
@@ -1265,6 +1221,7 @@ fun TopTransactionItemRow(
     item: TopTransactionItem
 ) {
     val isIncome = item.type == TransactionType.INCOME
+    val isTransfer = item.type == TransactionType.TRANSFER
 
     Row(
         modifier = Modifier
@@ -1296,22 +1253,33 @@ fun TopTransactionItemRow(
                 )
             }
             Spacer(modifier = Modifier.width(10.dp))
-            // Category Icon
+            // Icon
             Box(
                 modifier = Modifier
                     .size(34.dp)
                     .background(
-                        if (isIncome) SakuIncomeGreenBg else SakuExpenseRedBg,
+                        if (isIncome) SakuIncomeGreenBg
+                        else if (isTransfer) SakuGoldLight
+                        else SakuExpenseRedBg,
                         RoundedCornerShape(8.dp)
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = getCategoryIconVector(item.categoryIcon),
-                    contentDescription = null,
-                    tint = if (isIncome) SakuIncomeGreen else SakuExpenseRed,
-                    modifier = Modifier.size(18.dp)
-                )
+                if (isTransfer) {
+                    Icon(
+                        imageVector = Icons.Default.SwapHoriz,
+                        contentDescription = null,
+                        tint = SakuGoldAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                } else {
+                    Icon(
+                        imageVector = getCategoryIconVector(item.categoryIcon),
+                        contentDescription = null,
+                        tint = if (isIncome) SakuIncomeGreen else SakuExpenseRed,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(10.dp))
             // Title & Info
@@ -1323,19 +1291,35 @@ fun TopTransactionItemRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    text = "${item.categoryName} • ${Formatters.formatShortDateIndo(item.dateMillis)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = SakuTextMuted
-                )
+                if (isTransfer) {
+                    val source = item.sourceAssetName?.takeIf { it.isNotBlank() } ?: "-"
+                    val target = item.targetAssetName?.takeIf { it.isNotBlank() } ?: "-"
+                    Text(
+                        text = "$source → $target • ${Formatters.formatShortDateIndo(item.dateMillis)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SakuTextMuted
+                    )
+                } else {
+                    Text(
+                        text = "${item.categoryName} • ${Formatters.formatShortDateIndo(item.dateMillis)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SakuTextMuted
+                    )
+                }
             }
         }
 
         // Amount
         Text(
-            text = "${if (isIncome) "+" else "-"}${Formatters.formatRupiah(item.amount)}",
+            text = if (isIncome) {
+                "+${Formatters.formatRupiah(item.amount)}"
+            } else if (isTransfer) {
+                Formatters.formatRupiah(item.amount)
+            } else {
+                "-${Formatters.formatRupiah(item.amount)}"
+            },
             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-            color = if (isIncome) SakuIncomeGreen else SakuExpenseRed
+            color = if (isIncome) SakuIncomeGreen else if (isTransfer) SakuGoldAccent else SakuExpenseRed
         )
     }
 }
@@ -1398,119 +1382,6 @@ fun ExportActionCard(onClick: () -> Unit) {
                     .size(24.dp)
                     .rotate(-90f)
             )
-        }
-    }
-}
-
-// ============================================================
-// Export Options Bottom Sheet
-// ============================================================
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ExportBottomSheet(
-    onDismiss: () -> Unit,
-    onSelectExcel: () -> Unit,
-    onSelectBackupInternal: () -> Unit,
-    onSelectCloud: () -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState()
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = SakuCreamSurface
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "Pilih Format Ekspor",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                color = SakuDarkGreen
-            )
-            Text(
-                text = "Simpan atau kirim data laporan keuangan Anda",
-                style = MaterialTheme.typography.bodySmall,
-                color = SakuTextSecondary
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Option 1: Excel (.xlsx / CSV)
-            ExportOptionRow(
-                icon = Icons.Default.TableChart,
-                title = "Excel Spreadsheet",
-                subtitle = "Format .xlsx / CSV universal untuk spreadsheet",
-                tintColor = SakuIncomeGreen,
-                onClick = onSelectExcel
-            )
-
-            // Option 2: Internal Backup (JSON / Restore)
-            ExportOptionRow(
-                icon = Icons.Default.Storage,
-                title = "Cadangan Internal",
-                subtitle = "Berkas cadangan JSON & pemulihan database",
-                tintColor = SakuDarkGreen,
-                onClick = onSelectBackupInternal
-            )
-
-            // Option 3: Cloud Sync
-            ExportOptionRow(
-                icon = Icons.Default.CloudUpload,
-                title = "Cadangan Cloud",
-                subtitle = "Sinkronisasi otomatis ke cloud server Saku",
-                tintColor = SakuGoldAccent,
-                onClick = onSelectCloud
-            )
-        }
-    }
-}
-
-@Composable
-fun ExportOptionRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    tintColor: Color,
-    onClick: () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
-        color = SakuCreamBackground,
-        border = androidx.compose.foundation.BorderStroke(1.dp, SakuCreamBorder),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(42.dp)
-                    .background(tintColor.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = icon, contentDescription = null, tint = tintColor, modifier = Modifier.size(22.dp))
-            }
-            Spacer(modifier = Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = SakuTextPrimary
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = SakuTextSecondary
-                )
-            }
         }
     }
 }
