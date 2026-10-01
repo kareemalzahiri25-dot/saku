@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -227,15 +226,13 @@ fun AddTransactionScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(SakuCreamBackground)
-            .windowInsetsPadding(WindowInsets.statusBars)
-            .imePadding(),
+            .windowInsetsPadding(WindowInsets.statusBars),
         bottomBar = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(SakuCreamSurface)
                     .padding(top = 16.dp, bottom = 16.dp)
-                    .imePadding()
             ) {
                 // Divider top
                 HorizontalDivider(
